@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>365 Day Challenge – My Scheduler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #day-tabs { scrollbar-width: thin; scrollbar-color: #3a3a44 transparent; }
+        #day-tabs::-webkit-scrollbar { height: 6px; }
+        #day-tabs::-webkit-scrollbar-thumb { background: #3a3a44; border-radius: 3px; }
+        input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
+    </style>
+</head>
+<body class="bg-[#0f0f11] text-gray-200 font-sans min-h-screen flex flex-col md:flex-row overflow-x-hidden md:overflow-hidden">
+
+    {% include '_sidebar.html' %}
+
+    <main class="flex-1 bg-[#0f0f11] overflow-hidden">
+        <div class="h-full overflow-y-auto">
+
+            <!-- HERO (like the profile banner in the reference picture) -->
+            <section class="bg-gradient-to-br from-[#432b85] to-[#2b1b57] border-b border-[#5b3fa8]/40">
+                <div class="max-w-4xl mx-auto px-8 py-6 flex gap-5 items-start">
+                    <div class="w-24 h-24 shrink-0 rounded-lg bg-[#b9a6f2]/25 border-2 border-[#8f73e0] flex items-center justify-center text-5xl select-none">💪</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h1 class="text-2xl font-bold text-white leading-tight">365 Day Challenge</h1>
+                                <p class="text-xs text-violet-200">Physical Transformation</p>
+                            </div>
+                            <span id="save-status" class="text-[11px] text-violet-200/80 font-mono"></span>
+                        </div>
+                        <p class="mt-3 text-sm italic text-violet-100">“If you achieve this challenge, your life will completely change.”</p>
+
+                        <div class="mt-4 space-y-2">
+                            <div class="flex items-center gap-2">
+                                <span class="w-5 text-base select-none">🔥</span>
+                                <div class="flex-1 h-2.5 rounded bg-black/40 overflow-hidden"><div id="bar-current" class="h-full bg-rose-500 transition-all" style="width:0%"></div></div>
+                                <span id="txt-current" class="text-[11px] font-mono text-violet-100 w-24 text-right"></span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-5 text-base select-none">⭐</span>
+                                <div class="flex-1 h-2.5 rounded bg-black/40 overflow-hidden"><div id="bar-done" class="h-full bg-amber-400 transition-all" style="width:0%"></div></div>
+                                <span id="txt-done" class="text-[11px] font-mono text-violet-100 w-24 text-right"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- DAY TABS -->
+            <div class="sticky top-0 z-20 bg-[#0f0f11]/95 backdrop-blur border-b border-[#26262b]">
+                <div class="max-w-4xl mx-auto px-8 py-3 flex items-center gap-2">
+                    <button type="button" onclick="scrollTabs(-1)" class="shrink-0 px-2.5 py-1.5 text-xs text-gray-300 bg-[#1c1c21] border border-[#2a2a32] rounded-md hover:bg-[#26262b] transition" title="Scroll tabs left">◀</button>
+                    <div id="day-tabs" class="flex-1 flex gap-2 overflow-x-auto pb-1"></div>
+                    <button type="button" onclick="scrollTabs(1)" class="shrink-0 px-2.5 py-1.5 text-xs text-gray-300 bg-[#1c1c21] border border-[#2a2a32] rounded-md hover:bg-[#26262b] transition" title="Scroll tabs right">▶</button>
+                    <button type="button" onclick="goCurrent()" class="shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-[#6133b4] hover:bg-[#7140cc] rounded-md transition">Current day</button>
+                </div>
+            </div>
+
+            <!-- DAY PANEL -->
+            <div class="max-w-4xl mx-auto px-8 py-6">
+                <div id="toast" class="hidden mb-4 px-4 py-2.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs"></div>
+                <div id="day-panel"></div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        const ITEMS = {{ items | tojson }};
+        const TARGETS = {{ targets | tojson }};          // TARGETS[day - 1][item key] = target
+        const TOTAL_DAYS = TARGETS.length;
+        const MIN_TO_ADVANCE = {{ min_to_advance }};
+        let logs = {{ logs | tojson }};                  // logs[item key][day] = amount logged that day
+        let paused = {{ paused | tojson }};              // paused[day] = time it was paused
+
+        let S = null;            // computed state (see compute)
+        let selectedDay = 1;
+        let filter = 'all';
+        let toastTimer = null;
+        let saveQueue = Promise.resolve();
+
+        // First day each item gets a target (used in the "no target yet" hint).
+        const FIRST_TARGET = {};
+        ITEMS.forEach(it => {
+            const i = TARGETS.findIndex(t => (t[it.key] || 0) > 0);
+            FIRST_TARGET[it.key] = i === -1 ? null : i + 1;
+        });
+
+        function getLogged(key, day) {
+            return (logs[key] && logs[key][String(day)]) || 0;
+        }
+        function fmt(it, n) {
+            return n + (it.unit ? ' ' + it.unit : '');
+        }
+
+        // ------------------------------------------------------------------
+        // Core logic. For every item, walk the days in order:
+        //   available = logged that day + extra carried in from earlier days
+        //   applied   = min(available, that day's target)
+        //   whatever is left over is carried into the next day.
+        // So logging ahead (or doing extra) automatically completes later days.
+        // ------------------------------------------------------------------
+        function compute() {
+            const items = {};
+            ITEMS.forEach(it => {
+                items[it.key] = new Array(TOTAL_DAYS + 1);
+                let carry = 0;
+                for (let d = 1; d <= TOTAL_DAYS; d++) {
+                    const target = TARGETS[d - 1][it.key] || 0;
+                    const logged = getLogged(it.key, d);
+                    const avail = logged + carry;
+                    const applied = Math.min(avail, target);
+                    items[it.key][d] = { target, logged, carryIn: carry, applied, carryOut: avail - applied };
+                    carry = avail - applied;
+                }
+            });
+
+            const accessible = [], cleared = [], complete = [];
+            let current = 1, completeCount = 0;
+            for (let d = 1; d <= TOTAL_DAYS; d++) {
+                const core = items.core[d];
+                // Cleared = enough of the main exercise to move on (10 reps).
+                cleared[d] = (core.logged + core.carryIn) >= MIN_TO_ADVANCE;
+                complete[d] = ITEMS.every(it => {
+                    const x = items[it.key][d];
+                    return x.target === 0 || x.applied >= x.target;
+                });
+                accessible[d] = d === 1 ? true : (accessible[d - 1] && cleared[d - 1]);
+                if (accessible[d]) current = d;
+                if (complete[d]) completeCount++;
+            }
+            return { items, accessible, cleared, complete, current, completeCount };
+        }
+
+        // ------------------------------------------------------------------
+        // Saving (every change is saved right away, in order)
+        // ------------------------------------------------------------------
+        function setSave(state) {
+            const el = document.getElementById('save-status');
+            el.textContent = state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved ✓' : '⚠ Not saved';
+        }
+        function queuePost(url, payload) {
+            setSave('saving');
+            saveQueue = saveQueue.then(async () => {
+                try {
+                    const r = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    setSave('saved');
+                } catch (e) {
+                    setSave('error');
+                }
+            });
+        }
+
+        function setLog(key, day, value) {
+            if (!logs[key]) logs[key] = {};
+            if (value > 0) logs[key][String(day)] = value; else delete logs[key][String(day)];
+            queuePost('/challenge/log', { item: key, day: day, value: value });
+            render();
+        }
+        function adjust(key, delta) {
+            const next = Math.max(0, getLogged(key, selectedDay) + delta);
+            setLog(key, selectedDay, next);
+        }
+        function addFromInput(key) {
+            const el = document.getElementById('inp-' + key);
+            const n = parseInt(el.value, 10);
+            if (isNaN(n) || n === 0) { el.focus(); return; }
+            adjust(key, n);   // negative numbers subtract
+        }
+        function setPaused(day, isPaused) {
+            if (isPaused) paused[String(day)] = new Date().toISOString(); else delete paused[String(day)];
+            queuePost('/challenge/pause', { day: day, paused: isPaused });
+            render();
+        }
+
+        // ------------------------------------------------------------------
+        // Rendering
+        // ------------------------------------------------------------------
+        function toast(msg) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+        }
+
+        function selectDay(d) {
+            if (!S.accessible[d]) {
+                toast('🔒 Day ' + d + ' is locked. Log at least ' + MIN_TO_ADVANCE + ' push ups / curl ups / sit ups on Day ' + S.current + ' to unlock the next day.');
+                return;
+            }
+            selectedDay = d;
+            render();
+            scrollTabIntoView();
+        }
+        function goCurrent() {
+            selectedDay = S.current;
+            render();
+            scrollTabIntoView();
+        }
+        function scrollTabs(dir) {
+            document.getElementById('day-tabs').scrollBy({ left: dir * 320, behavior: 'smooth' });
+        }
+        function scrollTabIntoView() {
+            const el = document.getElementById('tab-' + selectedDay);
+            if (el) el.scrollIntoView({ inline: 'center', block: 'nearest' });
+        }
+        function setFilter(f) {
+            filter = f;
+            renderPanel();
+        }
+
+        function renderHero() {
+            document.getElementById('txt-current').textContent = 'Day ' + S.current + ' / ' + TOTAL_DAYS;
+            document.getElementById('bar-current').style.width = (S.current / TOTAL_DAYS * 100) + '%';
+            document.getElementById('txt-done').textContent = S.completeCount + ' / ' + TOTAL_DAYS + ' done';
+            document.getElementById('bar-done').style.width = (S.completeCount / TOTAL_DAYS * 100) + '%';
+        }
+
+        function renderTabs() {
+            const el = document.getElementById('day-tabs');
+            const keep = el.scrollLeft;
+            let html = '';
+            for (let d = 1; d <= TOTAL_DAYS; d++) {
+                let cls, icon = '';
+                if (d === selectedDay) {
+                    cls = 'bg-[#6133b4] text-white border-[#8f6bdc]';
+                    if (S.complete[d]) icon = '✓ ';
+                } else if (!S.accessible[d]) {
+                    cls = 'bg-[#141417] text-gray-600 border-[#26262b] cursor-not-allowed';
+                    icon = '🔒 ';
+                } else if (S.complete[d]) {
+                    cls = 'bg-emerald-600/20 text-emerald-300 border-emerald-600/50 hover:bg-emerald-600/30';
+                    icon = '✓ ';
+                } else {
+                    cls = 'bg-[#1c1c21] text-gray-300 border-[#2a2a32] hover:bg-[#26262b]';
+                }
+                html += '<button type="button" id="tab-' + d + '" onclick="selectDay(' + d + ')" ' +
+                        'class="shrink-0 px-3 py-1.5 rounded-md border text-xs font-semibold whitespace-nowrap transition ' + cls + '">' +
+                        icon + 'Day ' + d + '</button>';
+            }
+            el.innerHTML = html;
+            el.scrollLeft = keep;
+        }
+
+        function filterBtn(key, label) {
+            const on = filter === key;
+            return '<button type="button" onclick="setFilter(\'' + key + '\')" class="px-2 pb-1 text-xs font-semibold border-b-2 transition ' +
+                   (on ? 'border-violet-500 text-violet-300' : 'border-transparent text-gray-500 hover:text-gray-300') + '">' + label + '</button>';
+        }
+
+        function rowHtml(it, d) {
+            const x = S.items[it.key][d];
+            const hasTarget = x.target > 0;
+            const done = hasTarget && x.applied >= x.target;
+            const isPaused = it.core && !!paused[String(d)];
+            const pct = hasTarget ? Math.min(100, Math.round(x.applied / x.target * 100)) : 0;
+
+            const card = done ? 'bg-emerald-600/20 border-emerald-500/70'
+                       : hasTarget ? 'bg-emerald-950/30 border-emerald-700/60'
+                       : 'bg-[#1c1c21] border-[#2a2a32]';
+            const plusBg = done ? 'bg-emerald-500' : hasTarget ? 'bg-emerald-600' : 'bg-gray-600';
+            const minusBg = x.logged > 0 ? 'bg-amber-500/80' : 'bg-[#26262b]';
+            const lockAll = isPaused;
+            const lockCls = lockAll ? 'opacity-40 cursor-not-allowed' : 'hover:brightness-110';
+            const pad = it.core ? 'p-4' : 'p-3';
+
+            const title = it.core ? (x.target + ' Push ups / Curl ups / Sit ups') : it.label;
+            const progress = hasTarget ? (x.applied + ' / ' + fmt(it, x.target)) : (fmt(it, x.logged) + ' logged');
+
+            // small notes under the title
+            let notes = '';
+            if (it.core) {
+                const have = x.logged + x.carryIn;
+                if (S.cleared[d]) {
+                    notes += '<div class="text-[11px] text-emerald-300">✓ ' + (d < TOTAL_DAYS ? 'Day ' + (d + 1) + ' unlocked' : 'Final day') + '</div>';
+                } else {
+                    notes += '<div class="text-[11px] text-gray-400">' + (MIN_TO_ADVANCE - have) + ' more rep' + ((MIN_TO_ADVANCE - have) === 1 ? '' : 's') + ' to unlock Day ' + (d + 1) + '</div>';
+                }
+            }
+            if (!hasTarget) {
+                notes += '<div class="text-[11px] text-gray-500">No target yet' +
+                         (FIRST_TARGET[it.key] ? ' — anything you log carries forward to Day ' + FIRST_TARGET[it.key] : '') + '</div>';
+            }
+            if (hasTarget && x.carryIn > 0) {
+                notes += '<div class="text-[11px] text-sky-300">↳ ' + fmt(it, x.carryIn) + ' carried over from earlier days</div>';
+            }
+            if (hasTarget && x.carryOut > 0) {
+                notes += '<div class="text-[11px] text-sky-300">+' + fmt(it, x.carryOut) + ' extra carries to the next days</div>';
+            }
+
+            // controls
+            const dis = lockAll ? 'disabled' : '';
+            let chips = '';
+            it.chips.forEach(c => {
+                chips += '<button type="button" ' + dis + ' onclick="adjust(\'' + it.key + '\', ' + c + ')" class="px-2 py-1 rounded bg-black/30 border border-white/10 text-[11px] font-semibold text-gray-200 transition ' + lockCls + '">+' + c + '</button>';
+            });
+            const controls =
+                '<div class="mt-3 flex flex-wrap items-center gap-2">' + chips +
+                '<input id="inp-' + it.key + '" type="number" step="1" placeholder="Add #" ' + dis +
+                ' onkeydown="if(event.key===\'Enter\')addFromInput(\'' + it.key + '\')" ' +
+                'class="w-20 bg-[#141417] border border-[#2a2a32] rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-violet-500 ' + (lockAll ? 'opacity-40' : '') + '">' +
+                '<button type="button" ' + dis + ' onclick="addFromInput(\'' + it.key + '\')" class="px-2.5 py-1 rounded bg-violet-600 text-white text-[11px] font-semibold transition ' + lockCls + '">Add</button>' +
+                '</div>';
+
+            // pause / resume (main exercise only)
+            let pauseBlock = '';
+            if (it.core) {
+                if (isPaused) {
+                    const t = new Date(paused[String(d)]);
+                    const when = isNaN(t) ? '' : ' at ' + t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                    pauseBlock =
+                        '<div class="mt-3 flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-md bg-amber-500/10 border border-amber-500/40">' +
+                        '<span class="text-[11px] text-amber-200">⏸ Paused — progress saved (' + x.applied + ' / ' + x.target + ')' + when + '</span>' +
+                        '<button type="button" onclick="setPaused(' + d + ', false)" class="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold transition">▶ Resume</button>' +
+                        '</div>';
+                } else {
+                    pauseBlock =
+                        '<div class="mt-2 flex justify-end">' +
+                        '<button type="button" onclick="setPaused(' + d + ', true)" class="px-3 py-1 rounded bg-black/30 border border-white/10 hover:bg-black/50 text-[11px] font-semibold text-gray-200 transition">⏸ Pause &amp; save</button>' +
+                        '</div>';
+                }
+            }
+
+            const bar = hasTarget
+                ? '<div class="mt-2 h-2 rounded bg-black/40 overflow-hidden"><div class="h-full ' + (done ? 'bg-emerald-400' : 'bg-emerald-500') + ' transition-all" style="width:' + pct + '%"></div></div>'
+                : '';
+
+            return '' +
+                '<div class="flex rounded-lg overflow-hidden border ' + card + ' shadow-md">' +
+                    '<button type="button" ' + dis + ' onclick="adjust(\'' + it.key + '\', 1)" title="Add 1" class="w-12 shrink-0 flex items-center justify-center ' + plusBg + ' transition ' + lockCls + '">' +
+                        '<span class="w-7 h-7 rounded-full bg-black/25 flex items-center justify-center text-white text-lg font-bold leading-none">+</span></button>' +
+                    '<div class="flex-1 min-w-0 ' + pad + '">' +
+                        (it.core ? '<div class="text-[10px] font-bold uppercase tracking-wider text-emerald-300 mb-1">🎯 Daily target</div>' : '') +
+                        '<div class="flex items-start justify-between gap-3">' +
+                            '<div class="min-w-0"><div class="' + (it.core ? 'text-base' : 'text-sm') + ' font-semibold text-gray-100">' + (done ? '✓ ' : '') + title + '</div>' + notes + '</div>' +
+                            '<div class="shrink-0 text-right"><div class="text-[10px] uppercase tracking-wider text-gray-400">Progress</div>' +
+                            '<div class="' + (it.core ? 'text-lg' : 'text-sm') + ' font-bold font-mono ' + (done ? 'text-emerald-300' : 'text-gray-100') + '">' + progress + '</div></div>' +
+                        '</div>' +
+                        bar + controls + pauseBlock +
+                    '</div>' +
+                    '<button type="button" ' + ((x.logged > 0 && !lockAll) ? '' : 'disabled') + ' onclick="adjust(\'' + it.key + '\', -1)" title="Subtract 1" class="w-12 shrink-0 flex items-center justify-center ' + minusBg + ' transition ' + ((x.logged > 0 && !lockAll) ? 'hover:brightness-110' : 'opacity-60 cursor-not-allowed') + '">' +
+                        '<span class="w-7 h-7 rounded-full bg-black/25 flex items-center justify-center text-white text-lg font-bold leading-none">−</span></button>' +
+                '</div>';
+        }
+
+        function renderPanel() {
+            const d = selectedDay;
+            const targetItems = ITEMS.filter(it => S.items[it.key][d].target > 0);
+            const doneCount = targetItems.filter(it => { const x = S.items[it.key][d]; return x.applied >= x.target; }).length;
+
+            let chip;
+            if (S.complete[d]) chip = '<span class="px-2.5 py-1 rounded-full bg-emerald-600/25 border border-emerald-500/60 text-emerald-300 text-[11px] font-semibold">✓ Day complete</span>';
+            else if (S.cleared[d]) chip = '<span class="px-2.5 py-1 rounded-full bg-sky-500/15 border border-sky-500/50 text-sky-300 text-[11px] font-semibold">Cleared' + (d < TOTAL_DAYS ? ' · Day ' + (d + 1) + ' unlocked' : '') + '</span>';
+            else chip = '<span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-gray-300 text-[11px] font-semibold">In progress</span>';
+
+            const visible = ITEMS.filter(it => {
+                const t = S.items[it.key][d].target;
+                return filter === 'all' || (filter === 'targets' && t > 0) || (filter === 'upcoming' && t === 0);
+            });
+
+            let html =
+                '<div class="flex flex-wrap items-center justify-between gap-3 mb-4">' +
+                    '<div><h2 class="text-xl font-bold text-gray-100">Day ' + d + '</h2>' +
+                    '<p class="text-xs text-gray-500">' + doneCount + ' of ' + targetItems.length + ' target' + (targetItems.length === 1 ? '' : 's') + ' complete</p></div>' +
+                    chip +
+                '</div>' +
+                '<div class="flex items-end justify-between border-b border-[#26262b] mb-4">' +
+                    '<div class="flex items-center gap-2 pb-1"><span class="text-base font-bold text-gray-100">Challenges</span>' +
+                    '<span class="px-2 py-0.5 rounded-full bg-violet-500 text-white text-[11px] font-bold">' + visible.length + '</span></div>' +
+                    '<div class="flex gap-2">' + filterBtn('all', 'All') + filterBtn('targets', 'Targets') + filterBtn('upcoming', 'Upcoming') + '</div>' +
+                '</div>' +
+                '<div class="space-y-3">' + (visible.length ? visible.map(it => rowHtml(it, d)).join('') : '<p class="text-xs text-gray-500">Nothing here for this day.</p>') + '</div>';
+
+            document.getElementById('day-panel').innerHTML = html;
+        }
+
+        function render() {
+            S = compute();
+            // if edits ever lock the selected day again, fall back to the current day
+            if (!S.accessible[selectedDay]) selectedDay = S.current;
+            renderHero();
+            renderTabs();
+            renderPanel();
+        }
+
+        S = compute();
+        selectedDay = S.current;
+        render();
+        scrollTabIntoView();
+    </script>
+</body>
+</html>

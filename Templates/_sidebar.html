@@ -1,0 +1,65 @@
+<!-- Mobile Header Bar -->
+<div class="md:hidden bg-[#141417] border-b border-[#26262b] p-3 flex justify-between items-center w-full z-40">
+    <button onclick="toggleSidebar()" class="px-2.5 py-1 text-xs bg-[#1c1c21] border border-[#2a2a32] rounded text-gray-300 flex items-center gap-1.5">
+        <span>☰</span> Menu
+    </button>
+    <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white text-xs">J</div>
+        <span class="font-medium text-xs text-gray-100">Jan's Workspace</span>
+    </div>
+</div>
+
+<!-- Dark Backdrop Overlay for Mobile Drawer -->
+<div id="sidebar-backdrop" onclick="toggleSidebar()" class="hidden fixed inset-0 bg-black/70 z-40 md:hidden transition-opacity"></div>
+
+<!-- Slide-out Drawer Sidebar for Mobile / Normal Sidebar for Desktop -->
+<aside id="sidebar-nav" class="fixed inset-y-0 left-0 -translate-x-full md:translate-x-0 md:static z-50 w-64 bg-[#141417] border-r border-[#26262b] flex flex-col justify-between p-4 shrink-0 transition-transform duration-300 ease-in-out">
+    <div>
+        <div class="flex items-center justify-between mb-8 p-2.5 bg-[#1c1c21] rounded-lg border border-[#2a2a32]">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white text-xs">J</div>
+                <span class="font-medium text-sm text-gray-100">Jan's Workspace</span>
+            </div>
+            <!-- Close X button visible only on mobile -->
+            <button onclick="toggleSidebar()" class="md:hidden text-gray-400 hover:text-white px-2">✕</button>
+        </div>
+        <nav class="space-y-1">
+            {% set nav_items = [
+                ('schedule',  'Schedule',          '📅', url_for('index'), ''),
+                ('tasks',     'Tasks',             '✅', url_for('section', name='tasks'), ''),
+                ('goals',     'Goals',             '🎯', url_for('section', name='goals'), ''),
+                ('finance',   'Finance',           '💰', url_for('section', name='finance'), ''),
+                ('dreams',    'Dreams',            '✨', url_for('section', name='dreams'), ''),
+                ('challenge', '365 Day Challenge', '💪', url_for('challenge'), 'Physical Transformation')
+            ] %}
+            {% for key, label, icon, href, sub in nav_items %}
+            <a href="{{ href }}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition {% if active_page == key %}bg-blue-600 text-white font-medium shadow-sm{% else %}text-gray-400 hover:bg-[#1c1c21] hover:text-gray-200{% endif %}">
+                <span>{{ icon }}</span>
+                <span class="leading-tight">
+                    <span class="block">{{ label }}</span>
+                    {% if sub %}<span class="block text-[10px] opacity-70">{{ sub }}</span>{% endif %}
+                </span>
+            </a>
+            {% endfor %}
+        </nav>
+    </div>
+    <div class="border-t border-[#26262b] pt-4 flex items-center justify-between text-xs text-gray-500">
+    {% if current_user.is_authenticated %}
+        <span>Logged in as <b class="text-gray-200">{{ current_user.username }}</b></span>
+        <a href="/logout" class="text-red-400 hover:text-red-300 font-medium">Logout</a>
+    {% else %}
+        <a href="/login" class="text-blue-400 hover:text-blue-300 font-medium">Login</a>
+    {% endif %}
+</div>
+</aside>
+
+<!-- JavaScript to handle slide-in and backdrop -->
+<script>
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar-nav');
+        const backdrop = document.getElementById('sidebar-backdrop');
+        
+        sidebar.classList.toggle('-translate-x-full');
+        backdrop.classList.toggle('hidden');
+    }
+</script>

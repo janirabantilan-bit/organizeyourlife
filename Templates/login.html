@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - My Scheduler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#0f0f11] text-gray-200 flex items-center justify-center h-screen">
+    <div class="bg-[#141417] border border-[#26262b] p-6 rounded-xl w-full max-w-sm">
+        <h2 class="text-xl font-bold mb-4 text-center">Login</h2>
+        <form method="POST" class="space-y-4">
+            <div>
+                <label class="block text-xs uppercase text-gray-400 mb-1">Username</label>
+                <input type="text" name="username" required class="w-full bg-[#1c1c21] border border-[#2a2a32] rounded p-2 text-sm text-gray-100">
+            </div>
+            <div>
+                <label class="block text-xs uppercase text-gray-400 mb-1">Password</label>
+                <input type="password" name="password" required class="w-full bg-[#1c1c21] border border-[#2a2a32] rounded p-2 text-sm text-gray-100">
+            </div>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded text-xs transition">Login</button>
+        </form>
+        <p class="text-xs text-center text-gray-500 mt-4">Don't have an account? <a href="/register" class="text-blue-400">Register</a></p>
+    </div>
+</body>
+</html>

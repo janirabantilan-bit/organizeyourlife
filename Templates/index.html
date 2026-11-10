@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Scheduler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Makes the app open full-screen without a browser URL bar -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- Translates finger touch-dragging into HTML5 drag-and-drop for the Finance tab -->
+<script src="https://bernardo-castilho.github.io/DragDropTouch/DragDropTouch.js"></script>
+
+
+   <style>
+        .hour-row { height: 60px; position: relative; display: flex; align-items: center; border-bottom: 1px solid #1f1f24; box-sizing: border-box; }
+        .time-label { width: 85px; text-align: right; padding-right: 16px; font-size: 11px; color: #9ca3af; font-family: monospace; user-select: none; flex-shrink: 0; border-right: 1px solid #26262b; background-color: #141417; height: 100%; display: flex; align-items: center; justify-content: flex-end; }
+        .slots-container { flex: 1; height: 100%; position: relative; display: flex; flex-direction: column; }
+        .sub-slot { height: 15px; width: 100%; transition: background 0.1s ease; cursor: pointer; }
+        .sub-slot:hover { background-color: rgba(59, 130, 246, 0.3) !important; border-top: 1px dashed #93c5fd; }
+
+        /* Custom Scrollbar Styles */
+        #schedule-canvas::-webkit-scrollbar {
+            width: 8px;
+        }
+        #schedule-canvas::-webkit-scrollbar-track {
+            background: #141417;
+        }
+        #schedule-canvas::-webkit-scrollbar-thumb {
+            background: #26262b;
+            border-radius: 4px;
+        }
+        #schedule-canvas::-webkit-scrollbar-thumb:hover {
+            background: #3b82f6;
+        }
+    </style>
+</head>
+<body class="bg-[#0f0f11] text-gray-200 font-sans min-h-screen flex flex-col md:flex-row overflow-x-hidden md:overflow-hidden">
+
+    <!-- LEFT SIDEBAR (shared partial) -->
+    {% set active_page = 'schedule' %}
+    {% include '_sidebar.html' %}
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="flex-1 h-screen max-h-screen flex flex-col justify-between bg-[#0f0f11] overflow-hidden">
+        
+        <!-- TOP BAR -->
+        <header class="h-16 border-b border-[#26262b] px-8 flex items-center justify-between bg-[#141417]/50 backdrop-blur shrink-0">
+            <div class="flex items-center gap-4">
+                
+                <!-- Date Navigation Arrows (day / week / month depending on the view) -->
+                <div class="flex items-center gap-1 bg-[#1c1c21] border border-[#2a2a32] rounded-lg p-1">
+                    <button type="button" onclick="navigateDate(-1)" class="px-2.5 py-1 text-xs text-gray-300 hover:bg-[#26262b] rounded transition" title="Previous {% if view_mode == 'weekly' %}Week{% elif view_mode == 'monthly' %}Month{% else %}Day{% endif %}">◀</button>
+                    
+                    <form method="GET" action="/" id="date-form" class="relative flex items-center">
+                        <input type="hidden" name="view" value="{{ view_mode }}">
+                        <button type="button" onclick="document.getElementById('date-picker').showPicker()" 
+                                class="flex items-center gap-2 px-3 py-1 text-sm font-medium text-gray-200 transition">
+                            <span class="text-gray-400">📅</span>
+                            <span>{% if selected_date == today %}Today{% else %}{{ selected_date }}{% endif %}</span>
+                            <span class="text-xs text-gray-400 ml-1">▼</span>
+                        </button>
+                        <input type="date" id="date-picker" name="date" value="{{ selected_date }}" 
+                               onchange="document.getElementById('date-form').submit()"
+                               class="absolute opacity-0 pointer-events-none">
+                    </form>
+
+                    <button type="button" onclick="navigateDate(1)" class="px-2.5 py-1 text-xs text-gray-300 hover:bg-[#26262b] rounded transition" title="Next {% if view_mode == 'weekly' %}Week{% elif view_mode == 'monthly' %}Month{% else %}Day{% endif %}">▶</button>
+                </div>
+
+                <!-- View Mode Switcher -->
+                <div class="flex bg-[#1c1c21] p-1 rounded-lg border border-[#2a2a32]">
+                    <a href="/?date={{ selected_date }}&view=daily" class="px-3 py-1 rounded text-xs font-medium transition {% if view_mode == 'daily' %}bg-blue-600 text-white{% else %}text-gray-400 hover:text-gray-200{% endif %}">Daily</a>
+                    <a href="/?date={{ selected_date }}&view=weekly" class="px-3 py-1 rounded text-xs font-medium transition {% if view_mode == 'weekly' %}bg-blue-600 text-white{% else %}text-gray-400 hover:text-gray-200{% endif %}">Weekly</a>
+                    <a href="/?date={{ selected_date }}&view=monthly" class="px-3 py-1 rounded text-xs font-medium transition {% if view_mode == 'monthly' %}bg-blue-600 text-white{% else %}text-gray-400 hover:text-gray-200{% endif %}">Monthly</a>
+                </div>
+            </div>
+            <div class="text-xs text-gray-500 font-mono">Active View: {{ view_mode | capitalize }} | Date: {{ selected_date }}</div>
+        </header>
+
+        <!-- CONTENT AREA -->
+        <div class="flex-1 min-h-0 p-6 flex gap-6 px-8 w-full overflow-hidden">
+
+            {% set hours_list = [
+                '12:00 AM', '1:00 AM', '2:00 AM', '3:00 AM', '4:00 AM', '5:00 AM', 
+                '6:00 AM', '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', 
+                '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM', 
+                '6:00 PM', '7:00 PM', '8:00 PM', '9:00 PM', '10:00 PM', '11:00 PM'
+            ] %}
+            
+            {% if view_mode == 'daily' %}
+            <!-- SINGLE 24-HOUR UNIFIED TIMELINE COLUMN (12 AM to 12 AM) -->
+           <div class="flex-1 min-h-0 bg-[#141417] border border-[#26262b] rounded-xl flex flex-col shadow-lg overflow-hidden">
+                <div class="bg-[#1c1c21] px-4 py-3 border-b border-[#26262b] text-xs font-semibold uppercase tracking-wider text-gray-400 text-center">
+                    🕒 Full Day Schedule (12:00 AM – 12:00 AM)
+                </div>
+                
+                <!-- Dropping is handled once here (not per slot) so a task can be dropped
+                     anywhere, even on top of another task block. -->
+                <div class="relative flex-1 overflow-y-auto min-h-0 h-full" id="schedule-canvas" ondragover="allowDrop(event)" ondrop="dropTaskOnCanvas(event)">
+
+                    <div class="relative" id="grid-container">
+                        {% for i in range(24) %}
+                            <div class="hour-row" data-hour="{{ i }}">
+                                <div class="time-label"><span>{{ hours_list[i] }}</span></div>
+                                <div class="slots-container">
+                                    <div class="sub-slot" onclick="openCreateModal({{ i }}, 0)"></div>
+                                    <div class="sub-slot" onclick="openCreateModal({{ i }}, 15)"></div>
+                                    <div class="sub-slot" onclick="openCreateModal({{ i }}, 30)"></div>
+                                    <div class="sub-slot" onclick="openCreateModal({{ i }}, 45)"></div>
+                                </div>
+                            </div>
+                        {% endfor %}
+
+                        <!-- Tasks Absolute Overlay Layer aligned with the grid -->
+                        <div class="absolute inset-0 left-[85px] pointer-events-none z-30">
+                            {% set all_items = [] %}
+                            {% for item in schedules %}
+                                {% set actual_start = item.start_time_split if item.start_time_split is defined else item.start_time %}
+                                {% set actual_end = item.end_time_split if item.end_time_split is defined else item.end_time %}
+                                
+                                {% set cs_h = actual_start.split(':')[0] | int %}
+                                {% set cs_m = actual_start.split(':')[1] | int %}
+                                {% set ce_h = actual_end.split(':')[0] | int %}
+                                {% set ce_m = actual_end.split(':')[1] | int %}
+                                
+                                {% set duration_mins = ((ce_h * 60) + ce_m) - ((cs_h * 60) + cs_m) %}
+                                {% if duration_mins <= 0 %}{% set duration_mins = 15 %}{% endif %}
+                                {% set top_off = (cs_h * 60) + cs_m %}
+                                {% set _ = all_items.append({'item': item, 'duration': duration_mins, 'top': top_off, 'start_mins': (cs_h * 60) + cs_m, 'end_mins': (ce_h * 60) + ce_m}) %}
+                            {% endfor %}
+
+                            {% for entry in all_items | sort(attribute='duration', reverse=true) %}
+                                {% set item = entry.item %}
+                                {% set duration_minutes = entry.duration %}
+                                {% set top_offset = entry.top %}
+                                {% set calc_height = duration_minutes %}
+                                {% set dynamic_z = 10000 - duration_minutes %}
+
+                                <div draggable="true" ondragstart="drag(event)" data-id="{{ item.id }}"
+                                     id="task-card-{{ item.id }}"
+                                     data-day="{{ selected_date }}"
+                                     data-start-mins="{{ entry.start_mins }}"
+                                     data-end-mins="{{ entry.end_mins }}"
+                                     data-done="{{ 'true' if item.done else 'false' }}"
+                                     data-date="{{ item.date }}"
+                                     data-time="{{ item.start_time }}"
+                                     data-end="{{ item.end_time }}"
+                                     data-title="{{ item.title }}"
+                                     data-inset="2.5rem"
+                                     ondblclick="openEditModal({{ item.id }})"
+                                     class="task-card absolute left-2 right-2 p-3 rounded-lg shadow-md transition flex flex-col justify-between pointer-events-auto cursor-grab active:cursor-grabbing border border-white/20 select-none"
+                                     style="top: {{ top_offset }}px; height: {{ calc_height }}px; min-height: 30px; z-index: {{ dynamic_z }};">
+                                    
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-1.5 overflow-hidden">
+                                            <span class="font-bold text-xs truncate text-white pointer-events-none {% if item.done %}line-through opacity-75{% endif %}">
+                                                {{ item.title }}
+                                            </span>
+                                        </div>
+                                        <div class="flex items-center gap-1 shrink-0">
+                                            <span id="badge-{{ item.id }}" class="text-[9px] px-1.5 py-0.2 rounded font-bold text-white bg-black/40 status-badge" data-done="{{ 'true' if item.done else 'false' }}" data-time="{{ item.start_time }}" data-date="{{ item.date }}" data-end="{{ item.end_time }}">...</span>
+                                        </div>
+                                    </div>
+                                    <div class="text-[10px] text-white/95 font-bold font-mono pointer-events-none truncate">
+                                        {{ item.start_time | format_time }} - {{ item.end_time | format_time }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% elif view_mode == 'weekly' %}
+            <!-- WEEKLY: the same 24-hour timeline as the daily view, shrunk, with 7 day columns -->
+            {% set ppm = week_px_per_min %}
+            <div class="flex-1 min-h-0 h-full bg-[#141417] border border-[#26262b] rounded-xl flex flex-col shadow-lg overflow-hidden">
+                <div class="flex-1 overflow-y-auto">
+
+                    <!-- Sticky day header -->
+                    <div class="sticky top-0 z-[500] flex bg-[#1c1c21] border-b border-[#26262b]">
+                        <div class="w-[56px] shrink-0"></div>
+                        {% for day in week_days %}
+                        <div class="flex-1 min-w-0 border-l border-[#26262b] py-2 text-center">
+                            <div class="text-[10px] font-semibold uppercase tracking-wider {% if day.is_today %}text-blue-400{% else %}text-gray-400{% endif %}">{{ day.label }}</div>
+                            <div class="text-sm font-semibold {% if day.is_today %}text-blue-400{% else %}text-gray-200{% endif %}">{{ day.day_num }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="relative flex" style="height: {{ (24 * 60 * ppm) | round | int }}px;">
+                        <!-- Time labels -->
+                        <div class="w-[56px] shrink-0 relative border-r border-[#26262b] bg-[#141417]">
+                            {% for i in range(24) %}
+                            <div class="absolute right-1.5 text-[9px] font-mono text-gray-500 select-none" style="top: {{ (i * 60 * ppm + 2) | round(1) }}px;">{{ hours_list[i] | replace(':00', '') }}</div>
+                            {% endfor %}
+                        </div>
+
+                        <!-- One column per day -->
+                        {% for day in week_days %}
+                        <div class="flex-1 min-w-0 relative border-l border-[#26262b] {% if day.is_today %}bg-blue-500/5{% endif %}">
+                            {% for i in range(1, 24) %}
+                            <div class="absolute left-0 right-0 border-t border-[#1f1f24]" style="top: {{ (i * 60 * ppm) | round(1) }}px;"></div>
+                            {% endfor %}
+
+                            {% for item in day['items'] %}
+                            {% set block_h = [item.duration * ppm, 14] | max %}
+                            <div class="task-card absolute left-0.5 right-0.5 px-1.5 py-0.5 rounded-md border border-white/20 overflow-hidden cursor-pointer select-none shadow"
+                                 data-id="{{ item.id }}"
+                                 data-day="{{ day.date }}"
+                                 data-start-mins="{{ item.start_mins }}"
+                                 data-end-mins="{{ item.end_mins }}"
+                                 data-done="{{ 'true' if item.done else 'false' }}"
+                                 data-date="{{ item.date }}"
+                                 data-time="{{ item.start_time }}"
+                                 data-end="{{ item.end_time }}"
+                                 data-title="{{ item.title }}"
+                                 data-inset="14px"
+                                 ondblclick="openEditModal({{ item.id }})"
+                                 title="{{ item.title }} · {{ item.start_time | format_time }} – {{ item.end_time | format_time }}"
+                                 style="top: {{ (item.start_mins * ppm) | round(1) }}px; height: {{ block_h | round(1) }}px; z-index: {{ 10000 - item.duration }};">
+                                <div class="text-[10px] font-bold leading-tight text-white truncate {% if item.done %}line-through opacity-75{% endif %}">{{ item.title }}</div>
+                                <div class="text-[9px] leading-tight text-white/90 font-mono truncate">{{ item.start_time | format_time }} – {{ item.end_time | format_time }}</div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            {% elif view_mode == 'monthly' %}
+            <!-- MONTHLY: calendar grid; every task is a small readable block in its day -->
+            <div class="flex-1 bg-[#141417] border border-[#26262b] rounded-xl overflow-hidden flex flex-col shadow-lg">
+                <div class="bg-[#1c1c21] px-4 py-3 border-b border-[#26262b] text-xs font-semibold uppercase tracking-wider text-gray-400 text-center">
+                    📆 {{ month_label }}
+                </div>
+                <div class="flex-1 overflow-y-auto">
+                    <div class="sticky top-0 z-[500] grid grid-cols-7 bg-[#141417] border-b border-[#26262b] text-center text-[11px] font-semibold text-gray-400">
+                        <div class="py-2">Sun</div><div class="py-2">Mon</div><div class="py-2">Tue</div><div class="py-2">Wed</div><div class="py-2">Thu</div><div class="py-2">Fri</div><div class="py-2">Sat</div>
+                    </div>
+
+                    {% for week in month_weeks %}
+                    <div class="grid grid-cols-7 border-b border-[#26262b]">
+                        {% for day in week %}
+                        <div class="min-h-[120px] min-w-0 p-1.5 border-l border-[#26262b] first:border-l-0 {% if not day.in_month %}bg-black/30{% elif day.is_today %}bg-blue-500/5{% endif %}">
+                            <div class="text-[11px] font-mono mb-1 {% if day.is_today %}text-blue-400 font-bold{% elif day.in_month %}text-gray-300{% else %}text-gray-600{% endif %}">{{ day.day_num }}</div>
+                            <div class="space-y-1">
+                                {% for item in day['items'] %}
+                                <div class="task-card px-1.5 py-0.5 rounded border border-white/20 overflow-hidden cursor-pointer select-none"
+                                     data-id="{{ item.id }}"
+                                     data-day="{{ day.date }}"
+                                     data-start-mins="{{ item.start_mins }}"
+                                     data-end-mins="{{ item.end_mins }}"
+                                     data-done="{{ 'true' if item.done else 'false' }}"
+                                     data-date="{{ item.date }}"
+                                     data-time="{{ item.start_time }}"
+                                     data-end="{{ item.end_time }}"
+                                     data-title="{{ item.title }}"
+                                     ondblclick="openEditModal({{ item.id }})"
+                                     title="{{ item.title }} · {{ item.start_time | format_time }} – {{ item.end_time | format_time }}">
+                                    <div class="text-[10px] font-bold leading-tight text-white truncate {% if item.done %}line-through opacity-75{% endif %}">{% if item.from_prev %}↪ {% endif %}{{ item.title }}</div>
+                                    <div class="text-[9px] leading-tight text-white/90 font-mono truncate">{{ item.start_time | format_time }} – {{ item.end_time | format_time }}</div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+
+        <!-- BOTTOM BAR -->
+        <div class="p-4 border-t border-[#26262b] bg-[#141417] shrink-0">
+            <form method="POST" action="/?date={{ selected_date }}&view={{ view_mode }}" class="flex items-center gap-3 max-w-5xl mx-auto">
+                <input type="text" name="title" placeholder="+ Add a schedule..." required
+                       class="flex-1 bg-[#1c1c21] border border-[#2a2a32] rounded-lg px-3 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-600">
+                
+                <div class="flex items-center gap-1 text-[11px] text-gray-400">
+                    <span>Start:</span>
+                    <input type="time" name="start_time" value="09:00" required class="bg-[#1c1c21] border border-[#2a2a32] rounded px-1.5 py-1 text-xs text-gray-200">
+                </div>
+                <div class="flex items-center gap-1 text-[11px] text-gray-400">
+                    <span>End:</span>
+                    <input type="time" name="end_time" value="10:00" required class="bg-[#1c1c21] border border-[#2a2a32] rounded px-1.5 py-1 text-xs text-gray-200">
+                </div>
+
+                <select name="recurrence" class="bg-[#1c1c21] border border-[#2a2a32] rounded-lg px-2 py-2 text-xs text-gray-300 focus:outline-none focus:border-blue-600">
+                    <option value="none">One-time</option>
+                    <option value="daily">Daily</option>
+                    <option value="week">Whole Week</option>
+                    <option value="tue-sat">Tuesday - Saturday</option>
+                    <option value="weekends">Weekends</option>
+                    <option value="month">Whole Month</option>
+                </select>
+
+                <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-5 py-2 rounded-lg text-xs transition shadow-sm">
+                    Add
+                </button>
+            </form>
+        </div>
+
+    </main>
+
+    <!-- EDIT / CREATE MODAL -->
+    <div id="global-edit-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-[#141417] border border-[#2a2a32] w-full max-w-md rounded-xl p-6 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-[#26262b] pb-3">
+                <h3 id="modal-header-title" class="text-sm font-semibold text-gray-100">Edit Task</h3>
+                <button type="button" onclick="closeEditModal()" class="text-gray-400 hover:text-white text-sm">✕</button>
+            </div>
+            <form id="modal-edit-form" method="POST" class="space-y-3">
+                <div>
+                    <label class="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Task Title</label>
+                    <input type="text" id="modal-title" name="title" placeholder="Task name..." required class="w-full bg-[#1c1c21] border border-[#2a2a32] rounded-lg p-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Start Time</label>
+                        <input type="time" id="modal-start" name="start_time" required class="w-full bg-[#1c1c21] border border-[#2a2a32] rounded-lg p-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">End Time</label>
+                        <input type="time" id="modal-end" name="end_time" required class="w-full bg-[#1c1c21] border border-[#2a2a32] rounded-lg p-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <!-- Shown only when CREATING a task -->
+                <div id="modal-recurrence-wrap">
+                    <label class="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Recurrence Rule</label>
+                    <select id="modal-recurrence" name="recurrence" class="w-full bg-[#1c1c21] border border-[#2a2a32] rounded-lg p-2 text-xs text-gray-300 focus:outline-none focus:border-blue-500">
+                        <option value="none">One-time</option>
+                        <option value="daily">Daily</option>
+                        <option value="week">Whole Week</option>
+                        <option value="tue-sat">Tuesday - Saturday</option>
+                        <option value="weekends">Weekends</option>
+                        <option value="month">Whole Month</option>
+                    </select>
+                </div>
+
+                <!-- Shown only when EDITING a task that belongs to a recurring series -->
+                <div id="modal-scope-wrap" class="hidden">
+                    <label class="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Apply title &amp; time changes to</label>
+                    <select id="modal-scope" name="scope" class="w-full bg-[#1c1c21] border border-[#2a2a32] rounded-lg p-2 text-xs text-gray-300 focus:outline-none focus:border-blue-500">
+                        <option value="all">All tasks in this series</option>
+                        <option value="one">This task only</option>
+                    </select>
+                    <p class="text-[10px] text-gray-500 mt-1">"Mark as Done" always applies to this task only.</p>
+                </div>
+
+                <div class="flex items-center gap-2 pt-1">
+                    <input type="checkbox" id="modal-done" name="done" class="rounded bg-[#1c1c21] border-[#2a2a32] text-blue-600">
+                    <label for="modal-done" class="text-xs text-gray-300">Mark as Done</label>
+                </div>
+                <div class="flex justify-between items-center pt-3 border-t border-[#26262b]">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-xs font-medium transition">Save Changes</button>
+                </div>
+            </form>
+            <form id="modal-delete-form" method="POST" class="space-y-2">
+                <button type="submit" name="scope" value="one" class="w-full bg-red-950/50 hover:bg-red-900/60 text-red-400 py-2 rounded-lg text-xs transition border border-red-900/50">Delete This Task</button>
+                <button type="submit" id="modal-delete-series" name="scope" value="all"
+                        onclick="return confirm('Delete every task in this recurring series?')"
+                        class="hidden w-full bg-red-950/50 hover:bg-red-900/60 text-red-400 py-2 rounded-lg text-xs transition border border-red-900/50">Delete Entire Series</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- JavaScript Handlers -->
+    <script>
+        // Every task (not just the ones on screen) so the edit window can open
+        // for any block, including the continuation of an overnight task.
+        const schedulesData = {{ all_schedules | tojson }};
+
+        // Arrows move by a day, a week, or a month depending on the current view.
+        function navigateDate(direction) {
+            const [y, m, d] = "{{ selected_date }}".split('-').map(Number);
+            const dt = new Date(Date.UTC(y, m - 1, d));
+            const mode = "{{ view_mode }}";
+            if (mode === 'weekly') {
+                dt.setUTCDate(dt.getUTCDate() + direction * 7);
+            } else if (mode === 'monthly') {
+                dt.setUTCDate(1);
+                dt.setUTCMonth(dt.getUTCMonth() + direction);
+            } else {
+                dt.setUTCDate(dt.getUTCDate() + direction);
+            }
+            const newDateStr = dt.toISOString().split('T')[0];
+            window.location.href = `/?date=${newDateStr}&view={{ view_mode }}`;
+        }
+
+        function openEditModal(id) {
+            const task = schedulesData.find(s => s.id === id);
+            if (!task) return;
+            const isSeries = !!task.series_id;
+
+            document.getElementById('modal-header-title').innerText = "Edit Task";
+            document.getElementById('modal-title').value = task.title;
+            document.getElementById('modal-start').value = task.start_time;
+            document.getElementById('modal-end').value = task.end_time;
+            document.getElementById('modal-done').checked = task.done;
+
+            // Recurrence can only be chosen when creating; when editing a series
+            // the user picks whether the change applies to one task or all of them.
+            document.getElementById('modal-recurrence-wrap').classList.add('hidden');
+            document.getElementById('modal-scope-wrap').classList.toggle('hidden', !isSeries);
+            document.getElementById('modal-scope').value = isSeries ? 'all' : 'one';
+
+            document.getElementById('modal-delete-form').style.display = 'block';
+            document.getElementById('modal-delete-series').classList.toggle('hidden', !isSeries);
+
+            document.getElementById('modal-edit-form').action = '/update/' + id + '?date={{ selected_date }}&view={{ view_mode }}';
+            document.getElementById('modal-delete-form').action = '/delete/' + id + '?date={{ selected_date }}&view={{ view_mode }}';
+
+            document.getElementById('global-edit-modal').classList.remove('hidden');
+        }
+
+        function openCreateModal(hour, minute) {
+            document.getElementById('modal-header-title').innerText = "Add Schedule";
+            document.getElementById('modal-title').value = '';
+            
+            let startH = String(hour).padStart(2, '0');
+            let startM = String(minute).padStart(2, '0');
+            document.getElementById('modal-start').value = startH + ":" + startM;
+
+            let endHourNum = (hour + 1) % 24;
+            let endH = String(endHourNum).padStart(2, '0');
+            document.getElementById('modal-end').value = endH + ":" + startM;
+            document.getElementById('modal-recurrence').value = 'none';
+            document.getElementById('modal-done').checked = false;
+
+            document.getElementById('modal-recurrence-wrap').classList.remove('hidden');
+            document.getElementById('modal-scope-wrap').classList.add('hidden');
+            document.getElementById('modal-delete-form').style.display = 'none';
+
+            document.getElementById('modal-edit-form').action = '/?date={{ selected_date }}&view={{ view_mode }}';
+            document.getElementById('global-edit-modal').classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            document.getElementById('global-edit-modal').classList.add('hidden');
+        }
+
+        function allowDrop(ev) {
+            ev.preventDefault();
+        }
+
+        function pad2(n) { return String(n).padStart(2, '0'); }
+        function minsToTime(m) { return pad2(Math.floor(m / 60)) + ":" + pad2(m % 60); }
+
+        // Daily view: drop anywhere on the timeline (including on top of other task blocks).
+        // The drop position is converted to minutes (1px = 1 minute), snapped to 15 min.
+        function dropTaskOnCanvas(ev) {
+            ev.preventDefault();
+            const taskId = ev.dataTransfer.getData("text/plain");
+            if (!taskId) return;
+
+            const grid = document.getElementById('grid-container');
+            const rect = grid.getBoundingClientRect();
+            let y = ev.clientY - rect.top;
+            y = Math.max(0, Math.min(y, 1439));
+            const newStartMins = Math.floor(y / 15) * 15;
+
+            // Keep the task's original length instead of shrinking it to 1 hour.
+            let duration = 60;
+            const card = document.getElementById('task-card-' + taskId);
+            if (card) {
+                const [sh, sm] = card.dataset.time.split(':').map(Number);
+                const [eh, em] = card.dataset.end.split(':').map(Number);
+                const d = ((eh * 60 + em) - (sh * 60 + sm) + 1440) % 1440;
+                if (d > 0) duration = d;
+            }
+            const newEndMins = (newStartMins + duration) % 1440;
+
+            const formData = new URLSearchParams();
+            formData.append('start_time', minsToTime(newStartMins));
+            formData.append('end_time', minsToTime(newEndMins));
+
+            fetch('/update/' + taskId + '?date={{ selected_date }}&view={{ view_mode }}', {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                if (response.ok) {
+                    window.location.reload();
+                }
+            });
+        }
+
+        function drag(ev) {
+            ev.dataTransfer.setData("text/plain", ev.currentTarget.getAttribute("data-id"));
+        }
+
+        // Status, color, stacking and overlap logic.
+        // Works for the daily blocks, weekly blocks and monthly chips.
+        // Overlaps are checked within a single day only.
+        function updateTaskStatuses() {
+            const cards = Array.from(document.querySelectorAll('.task-card'));
+            const now = new Date();
+
+            const COLOR = {
+                done: "#059669",       // green
+                ongoing: "#059669",    // green
+                overdue: "#dc2626",    // red
+                scheduled: "#3b82f6",  // blue
+                shift: "#ea580c",      // orange (shifts / overnight tasks)
+                overlap: "#2563eb"     // blue (any block that sits on top of another)
+            };
+
+            function rangesOverlap(startA, endA, startB, endB) {
+                return Math.max(startA, startB) < Math.min(endA, endB);
+            }
+
+            // Group blocks by the day they are drawn on.
+            const groups = {};
+            cards.forEach(card => {
+                const start = parseInt(card.dataset.startMins, 10);
+                const rawEnd = parseInt(card.dataset.endMins, 10);
+                const duration = (rawEnd - start) > 0 ? (rawEnd - start) : 15;
+                const entry = {
+                    card: card,
+                    id: parseInt(card.dataset.id, 10),
+                    start: start,
+                    end: start + duration,
+                    duration: duration
+                };
+                const key = card.dataset.day || 'all';
+                (groups[key] = groups[key] || []).push(entry);
+            });
+
+            Object.values(groups).forEach(group => {
+                // Stacking order: longest at the back, shortest on top
+                // (ties: later start on top, then newer task on top).
+                const stack = group.slice().sort((a, b) =>
+                    (b.duration - a.duration) || (a.start - b.start) || (a.id - b.id)
+                );
+
+                stack.forEach((entry, idx) => {
+                    const card = entry.card;
+                    card.style.zIndex = 100 + idx;
+
+                    // This block "overlaps" if it sits on top of any block behind it.
+                    const sitsOnTop = stack.slice(0, idx).some(other =>
+                        rangesOverlap(entry.start, entry.end, other.start, other.end)
+                    );
+
+                    const isDone = card.dataset.done === 'true';
+                    const taskTitle = (card.dataset.title || '').toLowerCase();
+                    const taskStartTimeStr = card.dataset.time;
+                    const taskEndTimeStr = card.dataset.end;
+
+                    const [year, month, day] = card.dataset.date.split('-').map(Number);
+                    const [startH, startM] = taskStartTimeStr.split(':').map(Number);
+                    const [endH, endM] = taskEndTimeStr.split(':').map(Number);
+
+                    const taskDateTime = new Date(year, month - 1, day, startH, startM);
+                    let taskEndDateTime = new Date(year, month - 1, day, endH, endM);
+                    if (taskEndDateTime <= taskDateTime) {
+                        taskEndDateTime.setDate(taskEndDateTime.getDate() + 1);
+                    }
+
+                    // Status text
+                    let status;
+                    if (isDone) status = "Done";
+                    else if (now >= taskDateTime && now <= taskEndDateTime) status = "Ongoing";
+                    else if (now > taskEndDateTime) status = "Overdue";
+                    else status = "Scheduled";
+
+                    const badge = card.querySelector('.status-badge');
+                    if (badge) badge.innerText = status;
+
+                    // Color: done > overlap (blue) > shift/overnight (orange) > status color
+                    const isShift = taskTitle.includes('ppg shift') || (taskStartTimeStr > taskEndTimeStr);
+                    let color;
+                    if (isDone) color = COLOR.done;
+                    else if (sitsOnTop) color = COLOR.overlap;
+                    else if (isShift) color = COLOR.shift;
+                    else color = COLOR[status.toLowerCase()];
+
+                    card.style.backgroundColor = color;
+
+                    // Positioned blocks (daily/weekly): nudge an overlapping block in
+                    // from the left and outline it so the longer block stays visible.
+                    const inset = card.dataset.inset;
+                    if (sitsOnTop && !isDone && inset) {
+                        card.style.left = inset;
+                        card.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.85), 0 4px 12px rgba(0,0,0,0.5)";
+                    } else {
+                        card.style.left = "";
+                        card.style.boxShadow = "";
+                    }
+                });
+            });
+        }
+
+        updateTaskStatuses();
+        setInterval(updateTaskStatuses, 10000);
+    </script>
+</body>
+</html>

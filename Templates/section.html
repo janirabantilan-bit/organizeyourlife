@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }} – My Scheduler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+
+<!-- Makes the app open full-screen without a browser URL bar -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- Translates finger touch-dragging into HTML5 drag-and-drop for the Finance tab -->
+<script src="https://bernardo-castilho.github.io/DragDropTouch/DragDropTouch.js"></script>
+
+    <style>
+        .drop-zone { transition: all 0.2s ease; }
+        .drop-zone.drag-over { background-color: rgba(59, 130, 246, 0.1); border: 2px dashed #3b82f6 !important; }
+        .thick-border { border: 2px solid #6b7280; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-[#0f0f11] text-gray-200 font-sans min-h-screen flex flex-col md:flex-row overflow-x-hidden md:overflow-hidden">
+
+    {% include '_sidebar.html' %}
+
+    <main class="flex-1 bg-[#0f0f11] overflow-hidden flex flex-col">
+        {% if active_page == 'finance' %}
+            
+            <!-- TOP BAR: ADD INCOME & SINGLE QUOTE SLOT -->
+            <header class="p-3.5 shrink-0 border-b border-[#26262b] flex flex-wrap md:flex-nowrap items-center gap-3 md:gap-4">
+                <!-- Add Income Button -->
+                <button onclick="openModal('modal-income')" class="thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 shrink-0 transition">
+                    <span class="text-base leading-none font-light">+</span> ADD INCOME
+                </button>
+
+                <!-- Quote Slot: Shows "+ ADD QUOTE" button when empty, or the Quote Box when filled -->
+                <div class="flex-1 max-w-xl flex items-center">
+                    <!-- State 1: Add Quote Button (Visible only when no quote exists) -->
+                    <button id="btn-add-quote" onclick="openModal('modal-quote')" class="thick-border bg-[#1c1c21] hover:bg-gray-800 text-blue-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition">
+                        <span class="text-base leading-none font-light">+</span> ADD QUOTE
+                    </button>
+
+                    <!-- State 2: Active Quote Box (Replaces button once quote is added) -->
+                    <div id="quote-display-box" class="hidden relative w-full h-16 thick-border bg-[#141417] px-4 py-1.5 flex items-center justify-center text-center overflow-hidden shadow-inner group">
+                        <div id="quote-text-el" class="text-gray-100 italic font-semibold leading-snug break-words w-full"></div>
+                        <button onclick="deleteQuote()" class="absolute top-1 right-1.5 bg-red-600 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] opacity-0 group-hover:opacity-100 transition shadow" title="Delete Quote to add a new one">✕</button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- MAIN FINANCE BOARD -->
+            <div class="flex-1 flex flex-col overflow-hidden">
+                <!-- MAIN CANVAS: INCOMES & SAVE BOX -->
+               <div class="flex-1 p-3 md:p-4 overflow-y-auto flex flex-col md:flex-row gap-4 items-stretch md:items-start">
+                    
+                    <!-- Picture-Style Carousel Wrapper for Incomes -->
+                    <div class="relative flex-1 flex items-center overflow-hidden">
+                        <!-- Left Arrow -->
+                        <button onclick="scrollIncomes(-220)" class="z-20 bg-black/80 hover:bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center border border-gray-500 shadow-lg shrink-0 mr-2 transition" title="Scroll Left">
+                            ◀
+                        </button>
+
+                        <!-- Incomes Container (Scrollbar Hidden) -->
+                        <div id="incomes-container" class="flex gap-4 flex-1 overflow-x-auto no-scrollbar py-2 items-start scroll-smooth">
+                            <!-- Income boxes injected here by JS -->
+                        </div>
+
+                        <!-- Right Arrow -->
+                        <button onclick="scrollIncomes(220)" class="z-20 bg-black/80 hover:bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center border border-gray-500 shadow-lg shrink-0 ml-2 transition" title="Scroll Right">
+                            ▶
+                        </button>
+                    </div>
+
+                    <!-- SAVE Box (25% Smaller, Amount directly below SAVE) -->
+                    <div class="w-full md:w-48 shrink-0 thick-border bg-[#141417] p-3 flex flex-col shadow-lg min-h-[160px] md:min-h-[220px]">
+                        <div class="text-center mb-3 border-b border-[#26262b] pb-2">
+                            <div class="font-bold text-sm text-emerald-400 uppercase tracking-widest">SAVE</div>
+                            <div id="savings-total" class="font-black text-xl text-gray-100 mt-0.5">0</div>
+                        </div>
+                        <div id="zone-savings" class="flex-1 drop-zone flex flex-col gap-1.5 p-1.5 border-2 border-transparent" ondragover="allowDrop(event)" ondrop="drop(event, 'savings')" ondragleave="dragLeave(event)">
+                            <!-- Direct and Auto-replicated Savings tabs injected here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BOTTOM BAR: DEBTS & PAYABLES (25% Smaller) -->
+                <div class="border-t border-[#26262b] bg-[#141417] p-4 shrink-0 min-h-[120px] flex flex-col gap-2.5">
+                    <div>
+                        <button onclick="openModal('modal-debt')" class="thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition">
+                            <span class="bg-gray-200 text-black rounded-full w-4 h-4 flex items-center justify-center text-sm leading-none">+</span> 
+                            ADD DEBTS AND PAYABLES
+                        </button>
+                    </div>
+                    <div id="zone-unassigned" class="flex-1 drop-zone flex flex-wrap gap-2 p-2 border border-[#2a2a32] bg-[#0f0f11] rounded min-h-[50px]" ondragover="allowDrop(event)" ondrop="drop(event, 'unassigned')" ondragleave="dragLeave(event)">
+                        <!-- Unassigned tabs injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODALS -->
+            <!-- Income Modal -->
+            <div id="modal-income" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div class="bg-[#141417] border border-[#2a2a32] p-5 w-full max-w-xs rounded shadow-2xl">
+                    <h3 class="font-bold text-sm mb-3 uppercase text-gray-100">Add Income</h3>
+                    <div class="space-y-2.5">
+                        <input type="date" id="inp-inc-date" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
+                        <input type="number" id="inp-inc-amt" placeholder="Amount (e.g. 30000)" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div class="flex justify-end gap-2 mt-4">
+                        <button onclick="closeModals()" class="px-2.5 py-1 text-gray-400 hover:text-white text-xs font-medium">Cancel</button>
+                        <button onclick="saveIncome()" class="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded transition">Add</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quote Modal -->
+            <div id="modal-quote" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div class="bg-[#141417] border border-[#2a2a32] p-5 w-full max-w-xs rounded shadow-2xl">
+                    <h3 class="font-bold text-sm mb-3 uppercase text-gray-100">Add Quote</h3>
+                    <div class="space-y-2.5">
+                        <textarea id="inp-quote-text" rows="3" placeholder="Write your quote here..." class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"></textarea>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-4">
+                        <button onclick="closeModals()" class="px-2.5 py-1 text-gray-400 hover:text-white text-xs font-medium">Cancel</button>
+                        <button onclick="saveQuote()" class="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded transition">Save</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Debt Modal -->
+            <div id="modal-debt" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div class="bg-[#141417] border border-[#2a2a32] p-5 w-full max-w-xs rounded shadow-2xl">
+                    <h3 class="font-bold text-sm mb-3 uppercase text-gray-100">Add Debt / Payable / Save</h3>
+                    <div class="space-y-2.5">
+                        <input type="text" id="inp-debt-desc" placeholder="Description (type SAVINGS to auto-save)" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
+                        <input type="number" id="inp-debt-amt" placeholder="Amount (e.g. 3000)" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div class="flex justify-end gap-2 mt-4">
+                        <button onclick="closeModals()" class="px-2.5 py-1 text-gray-400 hover:text-white text-xs font-medium">Cancel</button>
+                        <button onclick="saveDebt()" class="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded transition">Add</button>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+               let fData = { incomes: [], tabs: {}, unassigned: [], savings: [], quote: "" };
+
+function fetchFinanceData() {
+    fetch('/api/finance')
+        .then(res => res.json())
+        .then(data => {
+            fData = data;
+            renderUI();
+        });
+}
+
+function saveState() {
+    renderUI();
+    fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fData)
+    });
+}
+
+window.onload = fetchFinanceData;
+
+                function generateId() { return Math.random().toString(36).substr(2, 9); }
+
+                function scrollIncomes(offset) {
+                    const container = document.getElementById('incomes-container');
+                    container.scrollBy({ left: offset, behavior: 'smooth' });
+                }
+
+                function openModal(id) {
+                    if (id === 'modal-quote' && fData.quote && fData.quote.trim() !== "") return;
+                    document.getElementById(id).classList.remove('hidden');
+                }
+                
+                function closeModals() {
+                    document.getElementById('modal-income').classList.add('hidden');
+                    document.getElementById('modal-debt').classList.add('hidden');
+                    document.getElementById('modal-quote').classList.add('hidden');
+                    document.getElementById('inp-inc-date').value = '';
+                    document.getElementById('inp-inc-amt').value = '';
+                    document.getElementById('inp-debt-desc').value = '';
+                    document.getElementById('inp-debt-amt').value = '';
+                    document.getElementById('inp-quote-text').value = '';
+                }
+
+                function saveIncome() {
+                    const dateRaw = document.getElementById('inp-inc-date').value;
+                    const amt = parseFloat(document.getElementById('inp-inc-amt').value);
+                    if (!dateRaw || isNaN(amt)) return;
+                    
+                    const dateObj = new Date(dateRaw + 'T00:00:00');
+                    const displayDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+                    fData.incomes.push({ id: 'inc_' + generateId(), date: displayDate, amount: amt, tabs: [] });
+                    closeModals();
+                    saveState();
+                }
+
+                function saveDebt() {
+                    const desc = document.getElementById('inp-debt-desc').value.trim();
+                    const amt = parseFloat(document.getElementById('inp-debt-amt').value);
+                    if (!desc || isNaN(amt)) return;
+                    
+                    const id = 'tab_' + generateId();
+                    fData.tabs[id] = { id: id, desc: desc, amount: amt };
+                    fData.unassigned.push(id);
+                    
+                    closeModals();
+                    saveState();
+                }
+
+                function saveQuote() {
+                    if (fData.quote && fData.quote.trim() !== "") return;
+                    const text = document.getElementById('inp-quote-text').value.trim();
+                    if (!text) return;
+                    fData.quote = text;
+                    closeModals();
+                    saveState();
+                }
+
+                function deleteQuote() {
+                    fData.quote = "";
+                    saveState();
+                }
+
+                // Dynamically scales the font size so the quote always fits inside the box
+                function fitQuoteText() {
+                    const box = document.getElementById('quote-display-box');
+                    const textEl = document.getElementById('quote-text-el');
+                    if (!box || !textEl || box.classList.contains('hidden')) return;
+
+                    let size = 18;
+                    textEl.style.fontSize = size + 'px';
+
+                    while ((textEl.scrollHeight > box.clientHeight - 12 || textEl.scrollWidth > box.clientWidth - 24) && size > 8) {
+                        size -= 1;
+                        textEl.style.fontSize = size + 'px';
+                    }
+                }
+
+                function renderQuoteSlot() {
+                    const btnAdd = document.getElementById('btn-add-quote');
+                    const quoteBox = document.getElementById('quote-display-box');
+                    const textEl = document.getElementById('quote-text-el');
+
+                    if (fData.quote && fData.quote.trim() !== "") {
+                        // Hide "+ ADD QUOTE" button and show the actual Quote Box in its place
+                        btnAdd.classList.add('hidden');
+                        quoteBox.classList.remove('hidden');
+                        textEl.innerText = `"${fData.quote}"`;
+                        fitQuoteText();
+                    } else {
+                        // No quote exists: show "+ ADD QUOTE" button and hide Quote Box
+                        quoteBox.classList.add('hidden');
+                        btnAdd.classList.remove('hidden');
+                        textEl.innerText = "";
+                    }
+                }
+
+                function deleteIncome(id) {
+                    if (confirm("Delete this income box? Attached tabs will return to the bottom pool.")) {
+                        const incIndex = fData.incomes.findIndex(i => i.id === id);
+                        if (incIndex > -1) {
+                            fData.unassigned.push(...fData.incomes[incIndex].tabs);
+                            fData.incomes.splice(incIndex, 1);
+                            saveState();
+                        }
+                    }
+                }
+
+                function deleteTab(ev, id) {
+                    ev.stopPropagation();
+                    if (confirm("Delete this tab entirely?")) {
+                        delete fData.tabs[id];
+                        fData.unassigned = fData.unassigned.filter(tid => tid !== id);
+                        fData.savings = fData.savings.filter(tid => tid !== id);
+                        fData.incomes.forEach(inc => inc.tabs = inc.tabs.filter(tid => tid !== id));
+                        saveState();
+                    }
+                }
+
+                function createTabElement(tab) {
+                    const el = document.createElement('div');
+                    const isSavingsLabel = tab.desc.trim().toUpperCase() === 'SAVINGS';
+                    el.className = `relative thick-border ${isSavingsLabel ? 'bg-emerald-950/60 border-emerald-500/80 text-emerald-200' : 'bg-[#1c1c21]'} px-2.5 py-1 cursor-grab text-center font-bold text-xs shadow hover:border-blue-400 transition active:cursor-grabbing group`;
+                    el.draggable = true;
+                    el.id = tab.id;
+                    el.ondragstart = (ev) => ev.dataTransfer.setData("text/plain", tab.id);
+                    
+                    el.innerHTML = `
+                        <span>${tab.amount} ${tab.desc}</span>
+                        <button onclick="deleteTab(event, '${tab.id}')" class="absolute -top-2 -right-2 bg-red-600 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] opacity-0 group-hover:opacity-100 transition shadow" title="Delete Tab">✕</button>
+                    `;
+                    return el;
+                }
+
+                function createAutoSavingsElement(tab, incomeDate) {
+                    const el = document.createElement('div');
+                    el.className = "relative thick-border border-emerald-500/70 bg-[#1c2621] px-2.5 py-1 text-center font-bold text-xs text-emerald-300 shadow group";
+                    el.innerHTML = `
+                        <div class="flex flex-col items-center leading-tight">
+                            <span>${tab.amount}</span>
+                            <span class="text-[10px] text-emerald-400/80 font-normal">From: ${incomeDate}</span>
+                        </div>
+                        <button onclick="deleteTab(event, '${tab.id}')" class="absolute -top-2 -right-2 bg-red-600 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] opacity-0 group-hover:opacity-100 transition shadow" title="Delete Savings Tab">✕</button>
+                    `;
+                    return el;
+                }
+
+                function renderUI() {
+                    const incContainer = document.getElementById('incomes-container');
+                    incContainer.innerHTML = '';
+                    
+                    const savingsZone = document.getElementById('zone-savings');
+                    savingsZone.innerHTML = '';
+                    let savingsSum = 0;
+
+                    // 1. Render Incomes & Detect "SAVINGS" tabs to auto-replicate into SAVE box
+                    fData.incomes.forEach(inc => {
+                        let deducted = 0;
+                        inc.tabs.forEach(tId => {
+                            const tabObj = fData.tabs[tId];
+                            if (tabObj) {
+                                deducted += tabObj.amount;
+                                if (tabObj.desc.trim().toUpperCase() === 'SAVINGS') {
+                                    savingsZone.appendChild(createAutoSavingsElement(tabObj, inc.date));
+                                    savingsSum += tabObj.amount;
+                                }
+                            }
+                        });
+                        let remaining = inc.amount - deducted;
+
+                        const div = document.createElement('div');
+                        div.className = "relative w-48 shrink-0 thick-border bg-[#141417] p-3 flex flex-col shadow-lg min-h-[220px] group";
+                        div.innerHTML = `
+                            <button onclick="deleteIncome('${inc.id}')" class="absolute top-1.5 right-1.5 text-gray-500 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition" title="Delete Income">✕</button>
+                            <div class="text-center mb-3 border-b border-[#26262b] pb-2">
+                                <div class="font-black text-xl text-gray-100">${remaining}</div>
+                                <div class="text-[11px] font-bold tracking-wider text-gray-400 mt-0.5">${inc.date}</div>
+                            </div>
+                            <div id="${inc.id}" class="flex-1 drop-zone flex flex-col gap-1.5 min-h-[90px] p-1.5 border-2 border-transparent" ondragover="allowDrop(event)" ondrop="drop(event, '${inc.id}')" ondragleave="dragLeave(event)">
+                            </div>
+                        `;
+                        incContainer.appendChild(div);
+
+                        const dropZone = div.querySelector('.drop-zone');
+                        inc.tabs.forEach(tId => {
+                            if (fData.tabs[tId]) dropZone.appendChild(createTabElement(fData.tabs[tId]));
+                        });
+                    });
+
+                    // 2. Render Unassigned Debts/Payables
+                    const unassignedZone = document.getElementById('zone-unassigned');
+                    unassignedZone.innerHTML = '';
+                    fData.unassigned.forEach(tId => {
+                        if (fData.tabs[tId]) unassignedZone.appendChild(createTabElement(fData.tabs[tId]));
+                    });
+
+                    // 3. Render Any Directly Dragged Savings Tabs & Update Total Below SAVE
+                    fData.savings.forEach(tId => {
+                        if (fData.tabs[tId]) {
+                            savingsZone.appendChild(createTabElement(fData.tabs[tId]));
+                            savingsSum += fData.tabs[tId].amount;
+                        }
+                    });
+                    document.getElementById('savings-total').innerText = savingsSum;
+
+                    // 4. Render Single Quote Button / Box Replacement
+                    renderQuoteSlot();
+                }
+
+                function allowDrop(ev) {
+                    ev.preventDefault();
+                    ev.currentTarget.classList.add('drag-over');
+                }
+                function dragLeave(ev) {
+                    ev.currentTarget.classList.remove('drag-over');
+                }
+                function drop(ev, targetZone) {
+                    ev.preventDefault();
+                    ev.currentTarget.classList.remove('drag-over');
+                    
+                    const tabId = ev.dataTransfer.getData("text/plain");
+                    if (!tabId || !fData.tabs[tabId]) return;
+                    
+                    fData.unassigned = fData.unassigned.filter(id => id !== tabId);
+                    fData.savings = fData.savings.filter(id => id !== tabId);
+                    fData.incomes.forEach(inc => inc.tabs = inc.tabs.filter(id => id !== tabId));
+
+                    if (targetZone === 'unassigned') {
+                        fData.unassigned.push(tabId);
+                    } else if (targetZone === 'savings') {
+                        fData.savings.push(tabId);
+                    } else {
+                        const inc = fData.incomes.find(i => i.id === targetZone);
+                        if (inc) inc.tabs.push(tabId);
+                    }
+                    saveState();
+                }
+
+                window.onload = renderUI;
+                window.onresize = fitQuoteText;
+            </script>
+
+        {% else %}
+            <div id="canvas" class="h-full overflow-y-auto p-8">
+                <h1 class="text-2xl font-bold text-gray-100 mb-2">{{ page_title }}</h1>
+                <p class="text-gray-500">Blank canvas ready for development...</p>
+            </div>
+        {% endif %}
+    </main>
+</body>
+</html>

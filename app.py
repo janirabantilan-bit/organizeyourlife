@@ -285,6 +285,12 @@ SECTIONS = {"tasks": "Tasks", "goals": "Goals", "finance": "Finance", "dreams": 
 def section(name):
     return render_template("section.html", active_page=name, page_title=SECTIONS[name])
 
+# Spreadsheet-style Cash Flow page (reads the same finance data as the Finance tab)
+@app.route("/cashflow")
+@login_required
+def cashflow():
+    return render_template("cashflow.html", active_page="finance")
+
 # ---------------------------------------------------------------------------
 # 365 DAY CHALLENGE (Physical Transformation)
 # ---------------------------------------------------------------------------

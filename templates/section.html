@@ -74,6 +74,9 @@
                         </button>
                     </div>
 
+                    <!-- RIGHT COLUMN: SAVE box + MONEY ON WALLET + CASH FLOW -->
+                    <div class="w-full md:w-48 shrink-0 flex flex-col gap-3">
+
                     <!-- SAVE Box (25% Smaller, Amount directly below SAVE) -->
                     <div class="w-full md:w-48 shrink-0 thick-border bg-[#141417] p-3 flex flex-col shadow-lg min-h-[160px] md:min-h-[220px]">
                         <div class="text-center mb-3 border-b border-[#26262b] pb-2">
@@ -84,6 +87,31 @@
                             <!-- Direct and Auto-replicated Savings tabs injected here -->
                         </div>
                     </div>
+
+                    <!-- MONEY ON WALLET (button opens/closes the wallet box below it) -->
+                    <button onclick="toggleWalletBox()" class="w-full thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center justify-between gap-2 transition">
+                        <span class="flex items-center gap-2"><span>💰</span> MONEY ON WALLET</span>
+                        <span id="wallet-caret" class="text-[10px] text-gray-400">▼</span>
+                    </button>
+
+                    <div id="wallet-box" class="hidden thick-border bg-[#141417] p-3 flex flex-col gap-2 shadow-lg min-h-[160px]">
+                        <div class="relative">
+                            <button onclick="toggleWalletMenu(event)" class="w-full border-2 border-dashed border-gray-500 hover:border-blue-400 text-blue-400 px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider transition">+ ADD A WALLET / BANK</button>
+                            <div id="wallet-menu" class="hidden absolute left-0 right-0 top-full mt-1 z-30 bg-[#1c1c21] border-2 border-gray-500 max-h-72 overflow-y-auto shadow-xl"></div>
+                        </div>
+                        <div id="wallet-list" class="flex-1 flex flex-col gap-1.5"></div>
+                        <div class="border-t border-[#26262b] pt-2 mt-1 flex items-end justify-between">
+                            <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Total</span>
+                            <span id="wallet-total" class="font-black text-lg text-gray-100">0</span>
+                        </div>
+                    </div>
+
+                    <!-- CASH FLOW (opens the spreadsheet-style page) -->
+                    <a href="/cashflow" class="w-full thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition">
+                        <span>📒</span> CASH FLOW
+                    </a>
+
+                    </div><!-- end right column -->
                 </div>
 
                 <!-- BOTTOM BAR: DEBTS & PAYABLES (25% Smaller) -->
@@ -145,14 +173,33 @@
                 </div>
             </div>
 
+            <!-- Wallet / Bank Modal -->
+            <div id="modal-wallet" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div class="bg-[#141417] border border-[#2a2a32] p-5 w-full max-w-xs rounded shadow-2xl">
+                    <h3 id="wallet-modal-title" class="font-bold text-sm mb-3 uppercase text-gray-100">Wallet</h3>
+                    <div class="space-y-2.5">
+                        <input type="text" id="inp-wallet-name" maxlength="40" placeholder="Bank name (e.g. BDO)" onkeydown="if(event.key==='Enter')saveWallet()" class="hidden w-full bg-[#1c1c21] border border-[#2a2a32] p-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
+                        <input type="number" step="0.01" min="0" id="inp-wallet-amt" placeholder="How much is in this wallet?" onkeydown="if(event.key==='Enter')saveWallet()" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div class="flex items-center justify-between gap-2 mt-4">
+                        <button id="btn-wallet-delete" onclick="deleteWallet()" class="hidden px-2.5 py-1 text-red-400 hover:text-red-300 text-xs font-medium">Delete</button>
+                        <div class="flex gap-2 ml-auto">
+                            <button onclick="closeWalletModal()" class="px-2.5 py-1 text-gray-400 hover:text-white text-xs font-medium">Cancel</button>
+                            <button onclick="saveWallet()" class="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded transition">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <script>
-               let fData = { incomes: [], tabs: {}, unassigned: [], savings: [], quote: "" };
+               let fData = { incomes: [], tabs: {}, unassigned: [], savings: [], quote: "", wallets: [] };
 
 function fetchFinanceData() {
     fetch('/api/finance')
         .then(res => res.json())
         .then(data => {
             fData = data;
+            normalizeFData();
             renderUI();
         });
 }
@@ -199,7 +246,7 @@ window.onload = fetchFinanceData;
                     const dateObj = new Date(dateRaw + 'T00:00:00');
                     const displayDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-                    fData.incomes.push({ id: 'inc_' + generateId(), date: displayDate, amount: amt, tabs: [] });
+                    fData.incomes.push({ id: 'inc_' + generateId(), date: displayDate, iso: dateRaw, amount: amt, tabs: [] });
                     closeModals();
                     saveState();
                 }
@@ -210,7 +257,7 @@ window.onload = fetchFinanceData;
                     if (!desc || isNaN(amt)) return;
                     
                     const id = 'tab_' + generateId();
-                    fData.tabs[id] = { id: id, desc: desc, amount: amt };
+                    fData.tabs[id] = { id: id, desc: desc, amount: amt, added: todayISO() };
                     fData.unassigned.push(id);
                     
                     closeModals();
@@ -375,6 +422,9 @@ window.onload = fetchFinanceData;
 
                     // 4. Render Single Quote Button / Box Replacement
                     renderQuoteSlot();
+
+                    // 5. Wallet box
+                    renderWallets();
                 }
 
                 function allowDrop(ev) {
@@ -397,16 +447,176 @@ window.onload = fetchFinanceData;
 
                     if (targetZone === 'unassigned') {
                         fData.unassigned.push(tabId);
+                        delete fData.tabs[tabId].assigned;
                     } else if (targetZone === 'savings') {
                         fData.savings.push(tabId);
+                        fData.tabs[tabId].assigned = todayISO();
                     } else {
                         const inc = fData.incomes.find(i => i.id === targetZone);
-                        if (inc) inc.tabs.push(tabId);
+                        if (inc) { inc.tabs.push(tabId); fData.tabs[tabId].assigned = todayISO(); }
                     }
                     saveState();
                 }
 
-                window.onload = renderUI;
+                // ===================== MONEY ON WALLET =====================
+                const WALLET_OPTIONS = [
+                    { key: 'gcash',      name: 'GCash',       color: '#007cff' },
+                    { key: 'paymaya',    name: 'PayMaya',     color: '#16a34a' },
+                    { key: 'shopeepay',  name: 'Shopee Pay',  color: '#ee4d2d' },
+                    { key: 'lazada',     name: 'Lazada',      color: '#4f46e5' },
+                    { key: 'fortunepay', name: 'Fortune Pay', color: '#ca8a04' },
+                    { key: 'payoneer',   name: 'Payoneer',    color: '#ea580c' },
+                    { key: 'paypal',     name: 'PayPal',      color: '#2563eb' },
+                    { key: 'maribank',   name: 'MariBank',    color: '#7c3aed' },
+                    { key: 'coins',      name: 'Coins',       color: '#0891b2' },
+                    { key: 'other',      name: 'Other banks', color: '#6b7280' }
+                ];
+                let walletOpen = false;
+                try { walletOpen = localStorage.getItem('walletBoxOpen') === '1'; } catch (e) {}
+                let walletEditId = null;   // wallet being edited (null = adding a new one)
+                let walletPickKey = null;  // option chosen from the list when adding
+
+                function normalizeFData() {
+                    fData.incomes = fData.incomes || [];
+                    fData.tabs = fData.tabs || {};
+                    fData.unassigned = fData.unassigned || [];
+                    fData.savings = fData.savings || [];
+                    fData.quote = fData.quote || "";
+                    fData.wallets = fData.wallets || [];
+                }
+
+                function todayISO() {
+                    const d = new Date();
+                    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                }
+                function walletMoney(n) {
+                    const v = Math.round((Number(n) || 0) * 100) / 100;
+                    return v.toLocaleString('en-US', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 });
+                }
+                function walletEsc(s) {
+                    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+                }
+                function walletAsOf(iso) {
+                    if (!iso) return '';
+                    const [y, m, d] = iso.split('-').map(Number);
+                    return 'as of ' + new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                }
+
+                function toggleWalletBox() {
+                    walletOpen = !walletOpen;
+                    try { localStorage.setItem('walletBoxOpen', walletOpen ? '1' : '0'); } catch (e) {}
+                    document.getElementById('wallet-menu').classList.add('hidden');
+                    renderWallets();
+                }
+                function toggleWalletMenu(ev) {
+                    ev.stopPropagation();
+                    document.getElementById('wallet-menu').classList.toggle('hidden');
+                }
+                document.addEventListener('click', () => {
+                    const menu = document.getElementById('wallet-menu');
+                    if (menu) menu.classList.add('hidden');
+                });
+
+                function pickWallet(key) {
+                    document.getElementById('wallet-menu').classList.add('hidden');
+                    // Already have this wallet? Open it so the balance can be updated instead of duplicated.
+                    const existing = key !== 'other' ? fData.wallets.find(w => w.key === key) : null;
+                    if (existing) { editWallet(existing.id); return; }
+                    const opt = WALLET_OPTIONS.find(o => o.key === key);
+                    walletEditId = null;
+                    walletPickKey = key;
+                    document.getElementById('wallet-modal-title').innerText = opt.name + ' — amount in wallet';
+                    document.getElementById('inp-wallet-name').classList.toggle('hidden', key !== 'other');
+                    document.getElementById('inp-wallet-name').value = '';
+                    document.getElementById('inp-wallet-amt').value = '';
+                    document.getElementById('btn-wallet-delete').classList.add('hidden');
+                    document.getElementById('modal-wallet').classList.remove('hidden');
+                    (key === 'other' ? document.getElementById('inp-wallet-name') : document.getElementById('inp-wallet-amt')).focus();
+                }
+
+                function editWallet(id) {
+                    const w = fData.wallets.find(x => x.id === id);
+                    if (!w) return;
+                    walletEditId = id;
+                    walletPickKey = w.key;
+                    document.getElementById('wallet-modal-title').innerText = w.name + ' — update amount';
+                    document.getElementById('inp-wallet-name').classList.toggle('hidden', w.key !== 'other');
+                    document.getElementById('inp-wallet-name').value = w.key === 'other' ? w.name : '';
+                    document.getElementById('inp-wallet-amt').value = w.amount;
+                    document.getElementById('btn-wallet-delete').classList.remove('hidden');
+                    document.getElementById('modal-wallet').classList.remove('hidden');
+                    document.getElementById('inp-wallet-amt').focus();
+                }
+
+                function closeWalletModal() {
+                    document.getElementById('modal-wallet').classList.add('hidden');
+                    walletEditId = null;
+                    walletPickKey = null;
+                }
+
+                function saveWallet() {
+                    const amt = parseFloat(document.getElementById('inp-wallet-amt').value);
+                    if (isNaN(amt) || amt < 0) { document.getElementById('inp-wallet-amt').focus(); return; }
+                    const opt = WALLET_OPTIONS.find(o => o.key === walletPickKey);
+                    if (!opt) return;
+
+                    let name = opt.name;
+                    if (walletPickKey === 'other') {
+                        name = document.getElementById('inp-wallet-name').value.trim();
+                        if (!name) { document.getElementById('inp-wallet-name').focus(); return; }
+                    }
+                    const rounded = Math.round(amt * 100) / 100;
+
+                    if (walletEditId) {
+                        const w = fData.wallets.find(x => x.id === walletEditId);
+                        if (w) { w.name = name; w.amount = rounded; w.updated = todayISO(); }
+                    } else {
+                        fData.wallets.push({ id: 'w_' + generateId(), key: walletPickKey, name: name, amount: rounded, updated: todayISO() });
+                    }
+                    closeWalletModal();
+                    saveState();
+                }
+
+                function deleteWallet() {
+                    if (!walletEditId) return;
+                    if (!confirm('Remove this wallet from the list?')) return;
+                    fData.wallets = fData.wallets.filter(w => w.id !== walletEditId);
+                    closeWalletModal();
+                    saveState();
+                }
+
+                function renderWallets() {
+                    const box = document.getElementById('wallet-box');
+                    if (!box) return;
+                    const wallets = fData.wallets || [];
+                    box.classList.toggle('hidden', !walletOpen);
+                    document.getElementById('wallet-caret').innerText = walletOpen ? '▲' : '▼';
+
+                    // option list (✓ = already added)
+                    document.getElementById('wallet-menu').innerHTML = WALLET_OPTIONS.map(o => {
+                        const has = o.key !== 'other' && wallets.some(w => w.key === o.key);
+                        return '<button onclick="pickWallet(\'' + o.key + '\')" class="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs font-semibold text-gray-100 hover:bg-gray-700 transition">' +
+                               '<span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:' + o.color + '"></span>' +
+                               '<span class="flex-1">' + o.name + '</span>' + (has ? '<span class="text-emerald-400">✓</span>' : '') + '</button>';
+                    }).join('');
+
+                    // wallet rows
+                    const list = document.getElementById('wallet-list');
+                    if (!wallets.length) {
+                        list.innerHTML = '<p class="text-[11px] text-gray-500 text-center py-4">No wallets yet.<br>Press “+ ADD A WALLET / BANK”.</p>';
+                    } else {
+                        list.innerHTML = wallets.map(w => {
+                            const opt = WALLET_OPTIONS.find(o => o.key === w.key) || WALLET_OPTIONS[WALLET_OPTIONS.length - 1];
+                            return '<div onclick="editWallet(\'' + w.id + '\')" title="Click to update the amount" class="flex items-center gap-2 border border-[#2a2a32] bg-[#1c1c21] hover:border-blue-400 px-2 py-1.5 cursor-pointer transition">' +
+                                   '<span class="w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-bold text-white" style="background:' + opt.color + '">' + walletEsc(w.name.charAt(0).toUpperCase()) + '</span>' +
+                                   '<div class="flex-1 min-w-0 leading-tight"><div class="text-[11px] font-bold text-gray-100 truncate">' + walletEsc(w.name) + '</div>' +
+                                   '<div class="text-[9px] text-gray-500">' + walletAsOf(w.updated) + '</div></div>' +
+                                   '<div class="text-xs font-bold text-gray-100">' + walletMoney(w.amount) + '</div></div>';
+                        }).join('');
+                    }
+                    document.getElementById('wallet-total').innerText = walletMoney(wallets.reduce((a, w) => a + w.amount, 0));
+                }
+
                 window.onresize = fitQuoteText;
             </script>
 

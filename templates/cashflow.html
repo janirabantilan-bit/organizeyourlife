@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cash Flow – My Scheduler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Makes the app open full-screen without a browser URL bar -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+
+    <style>
+        .sheet-wrap { scrollbar-color: #3a3a44 #141417; }
+        table.sheet { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-family: Calibri, "Segoe UI", system-ui, sans-serif; font-size: 12.5px; }
+        .sheet td, .sheet th { border-right: 1px solid #2a2a32; border-bottom: 1px solid #2a2a32; padding: 3px 8px; height: 24px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sheet thead th { position: sticky; top: 0; z-index: 3; background: #1c1c21; color: #9ca3af; font-weight: 600; text-align: center; border-top: 1px solid #2a2a32; }
+        .sheet .rownum { position: sticky; left: 0; z-index: 2; background: #1c1c21; color: #6b7280; text-align: center; font-size: 11px; padding: 3px 0; border-left: 1px solid #2a2a32; }
+        .sheet thead .rownum { z-index: 4; }
+        .sheet td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: Consolas, "Courier New", monospace; }
+        .sheet td.neg { color: #f87171; }
+        .sheet td.cell { cursor: cell; }
+        .sheet td.sel { outline: 2px solid #22a35a; outline-offset: -2px; background: rgba(34, 163, 90, 0.10); }
+        .sheet tr.title td { background: #0f2a1c; color: #e5ffef; font-size: 17px; font-weight: 800; height: 34px; letter-spacing: .04em; }
+        .sheet tr.meta td { color: #9ca3af; font-size: 12px; }
+        .sheet tr.section td { background: #1f4d34; color: #bbf7d0; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; height: 26px; }
+        .sheet tr.header td { background: #26262b; color: #e5e7eb; font-weight: 700; border-bottom: 2px solid #4b4b57; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
+        .sheet tr.sub td { font-weight: 700; border-top: 1px solid #6b7280; background: rgba(255,255,255,0.03); }
+        .sheet tr.total td { font-weight: 800; border-top: 1px solid #9ca3af; border-bottom: 3px double #9ca3af; background: rgba(34, 163, 90, 0.10); }
+        .sheet tr.label td { font-weight: 800; color: #e5e7eb; }
+        .sheet tr.note td { color: #9ca3af; font-style: italic; white-space: normal; height: auto; line-height: 1.35; }
+        .sheet tr.empty td { color: #6b7280; font-style: italic; }
+        .sheet tr.income td { font-weight: 700; color: #bbf7d0; }
+        .sheet td.dim { color: #8b8b97; font-style: italic; }
+        .sheet td.indent { padding-left: 22px; }
+        .sheet tr.blank td { height: 14px; }
+    </style>
+</head>
+<body class="bg-[#0f0f11] text-gray-200 font-sans min-h-screen flex flex-col md:flex-row overflow-x-hidden md:overflow-hidden">
+
+    {% include '_sidebar.html' %}
+
+    <main class="flex-1 min-w-0 flex flex-col h-[calc(100dvh-3.25rem)] md:h-screen">
+
+        <!-- Excel-style title bar -->
+        <div class="shrink-0 bg-[#1d6b45] text-white px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+                <span class="text-lg leading-none">📗</span>
+                <span class="text-sm font-semibold truncate">Cash Flow.xlsx</span>
+                <span class="text-[11px] text-emerald-100/80 hidden sm:inline">— {{ current_user.username }}</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <a href="/finance" class="px-3 py-1 text-xs font-semibold bg-black/25 hover:bg-black/40 rounded transition">← Back to Finance</a>
+                <button type="button" onclick="exportCSV()" class="px-3 py-1 text-xs font-semibold bg-white text-[#1d6b45] hover:bg-emerald-50 rounded transition">⬇ Export to Excel (CSV)</button>
+            </div>
+        </div>
+
+        <!-- Formula bar -->
+        <div class="shrink-0 bg-[#141417] border-b border-[#26262b] flex items-center text-xs">
+            <div id="namebox" class="w-20 text-center py-1.5 border-r border-[#26262b] text-gray-300 font-semibold">A1</div>
+            <div class="px-3 py-1.5 text-gray-500 italic border-r border-[#26262b]">fx</div>
+            <div id="formula" class="flex-1 min-w-0 px-3 py-1.5 text-gray-200 truncate"></div>
+        </div>
+
+        <!-- The sheet -->
+        <div id="sheet-wrap" class="sheet-wrap flex-1 overflow-auto bg-[#0f0f11]">
+            <p id="loading" class="p-6 text-sm text-gray-500">Loading your finance data…</p>
+            <table id="sheet" class="sheet hidden">
+                <colgroup>
+                    <col style="width:44px"><col style="width:130px"><col style="width:310px"><col style="width:135px"><col style="width:135px"><col style="width:145px"><col style="width:270px">
+                </colgroup>
+                <thead>
+                    <tr><th class="rownum"></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th></tr>
+                </thead>
+                <tbody id="sheet-body"></tbody>
+            </table>
+        </div>
+
+        <!-- Status bar + sheet tab -->
+        <div class="shrink-0 bg-[#141417] border-t border-[#26262b] flex items-center justify-between text-[11px] text-gray-500">
+            <div class="flex items-end">
+                <span class="px-4 py-1.5 bg-[#0f0f11] text-[#34d399] font-bold border-t-2 border-[#22a35a]">Cash Flow</span>
+            </div>
+            <div class="px-4 py-1.5 flex gap-4"><span id="status-sum"></span><span>Ready</span></div>
+        </div>
+    </main>
+
+    <script>
+        // Put your currency symbol here if you want one, e.g. '₱'
+        const CURRENCY = '';
+        const COLS = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+        const $ = id => document.getElementById(id);
+        function esc(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+        function plain(n) {
+            return Math.abs(Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        // accounting style: negatives in (parentheses)
+        function money(n) {
+            const v = Math.round((Number(n) || 0) * 100) / 100;
+            return v < 0 ? '(' + CURRENCY + plain(v) + ')' : CURRENCY + plain(v);
+        }
+        // money going out is always shown in (parentheses)
+        function moneyOut(n) { return '(' + CURRENCY + plain(n) + ')'; }
+
+        function fmtISO(iso) {
+            if (!iso) return '';
+            const [y, m, d] = iso.split('-').map(Number);
+            return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+        // Incomes saved before the update only have "Nov 15" (no year). Use iso when we have it.
+        function incomeDate(inc) { return inc.iso ? fmtISO(inc.iso) : (inc.date || ''); }
+        function incomeSortKey(inc) {
+            if (inc.iso) return inc.iso;
+            const t = new Date(inc.date + ', ' + new Date().getFullYear());
+            return isNaN(t) ? '9999' : t.toISOString().slice(0, 10);
+        }
+        function isSavingsTab(tab) { return (tab.desc || '').trim().toUpperCase() === 'SAVINGS'; }
+
+        // ------------------------------------------------------------------
+        // Turn the finance data into spreadsheet rows
+        // cell = { t: shown text, n: raw number or null, cls: css classes, span: columns }
+        // ------------------------------------------------------------------
+        function buildRows(d) {
+            const rows = [];
+            const C = (t, n, cls, span) => ({ t: (t === undefined || t === null) ? '' : String(t), n: (n === undefined ? null : n), cls: cls || '', span: span || 1 });
+            const add = (cls, cells) => rows.push({ cls: cls, cells: cells });
+            const blank = () => add('blank', [C(), C(), C(), C(), C(), C()]);
+            const tabs = d.tabs || {};
+            const incomes = (d.incomes || []).slice().sort((a, b) => incomeSortKey(a).localeCompare(incomeSortKey(b)));
+            const wallets = d.wallets || [];
+
+            const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            add('title', [C('CASH FLOW STATEMENT & BALANCE SHEET', null, '', 6)]);
+            add('meta', [C('As of ' + today, null, '', 6)]);
+            blank();
+
+            // ---------------- 1. INCOME & DEDUCTIONS ----------------
+            add('section', [C('1. Income & deductions', null, '', 6)]);
+            add('header', [C('Date'), C('Description'), C('Inflow', null, 'num'), C('Outflow', null, 'num'), C('Balance', null, 'num'), C('Note')]);
+
+            let totalIn = 0, totalOut = 0, autoSavings = [];
+            if (!incomes.length) {
+                add('empty', [C('No income entered yet.', null, '', 6)]);
+            }
+            incomes.forEach(inc => {
+                const dateTxt = incomeDate(inc);
+                let balance = inc.amount;
+                totalIn += inc.amount;
+                add('income', [C(dateTxt), C('INCOME'), C(money(inc.amount), inc.amount, 'num'), C(''), C(money(balance), balance, 'num' + (balance < 0 ? ' neg' : '')), C('')]);
+
+                (inc.tabs || []).forEach(id => {
+                    const tab = tabs[id];
+                    if (!tab) return;
+                    balance -= tab.amount;
+                    totalOut += tab.amount;
+                    const savings = isSavingsTab(tab);
+                    if (savings) autoSavings.push({ tab: tab, incomeDate: dateTxt });
+                    add('data', [
+                        tab.assigned ? C(fmtISO(tab.assigned)) : C(dateTxt, null, 'dim'),
+                        C(tab.desc, null, 'indent'),
+                        C(''),
+                        C(moneyOut(tab.amount), tab.amount, 'num'),
+                        C(money(balance), balance, 'num' + (balance < 0 ? ' neg' : '')),
+                        C(savings ? 'Savings, taken from ' + dateTxt + ' income' : 'Deducted from ' + dateTxt + ' income')
+                    ]);
+                });
+                add('sub', [C(''), C('Net remaining, ' + dateTxt + ' income'), C(''), C(''), C(money(balance), balance, 'num' + (balance < 0 ? ' neg' : '')), C('')]);
+                blank();
+            });
+
+            const net = totalIn - totalOut;
+            add('sub', [C(''), C('TOTAL INCOME'), C(money(totalIn), totalIn, 'num'), C(''), C(''), C('')]);
+            add('sub', [C(''), C('TOTAL DEDUCTIONS'), C(''), C(moneyOut(totalOut), totalOut, 'num'), C(''), C('')]);
+            add('total', [C(''), C('NET CASH REMAINING'), C(''), C(''), C(money(net), net, 'num' + (net < 0 ? ' neg' : '')), C('Income not yet used by a deduction')]);
+            blank();
+
+            // ---------------- 2. UNPAID DEBTS & PAYABLES ----------------
+            const unpaid = (d.unassigned || []).map(id => tabs[id]).filter(Boolean);
+            const totalUnpaid = unpaid.reduce((a, t) => a + t.amount, 0);
+            add('section', [C('2. Unpaid debts & payables (not yet deducted from an income)', null, '', 6)]);
+            add('header', [C('Date added'), C('Description'), C(''), C('Amount due', null, 'num'), C(''), C('Status')]);
+            if (!unpaid.length) add('empty', [C('Nothing unpaid. Every debt and payable is assigned to an income.', null, '', 6)]);
+            unpaid.forEach(t => {
+                add('data', [t.added ? C(fmtISO(t.added)) : C('', null, 'dim'), C(t.desc, null, 'indent'), C(''), C(moneyOut(t.amount), t.amount, 'num'), C(''), C('Unpaid')]);
+            });
+            add('total', [C(''), C('TOTAL UNPAID'), C(''), C(moneyOut(totalUnpaid), totalUnpaid, 'num'), C(''), C('')]);
+            blank();
+
+            // ---------------- 3. SAVINGS ----------------
+            const directSavings = (d.savings || []).map(id => tabs[id]).filter(Boolean);
+            let totalSavings = 0;
+            add('section', [C('3. Savings', null, '', 6)]);
+            add('header', [C('Date'), C('Description'), C('Amount', null, 'num'), C(''), C(''), C('Source')]);
+            if (!autoSavings.length && !directSavings.length) add('empty', [C('No savings yet.', null, '', 6)]);
+            autoSavings.forEach(x => {
+                totalSavings += x.tab.amount;
+                add('data', [x.tab.assigned ? C(fmtISO(x.tab.assigned)) : C(x.incomeDate, null, 'dim'), C('Savings', null, 'indent'), C(money(x.tab.amount), x.tab.amount, 'num'), C(''), C(''), C('From ' + x.incomeDate + ' income')]);
+            });
+            directSavings.forEach(t => {
+                totalSavings += t.amount;
+                add('data', [t.assigned ? C(fmtISO(t.assigned)) : C('', null, 'dim'), C(t.desc, null, 'indent'), C(money(t.amount), t.amount, 'num'), C(''), C(''), C('Added to the SAVE box')]);
+            });
+            add('total', [C(''), C('TOTAL SAVINGS'), C(money(totalSavings), totalSavings, 'num'), C(''), C(''), C('')]);
+            blank();
+
+            // ---------------- 4. WALLET & BANK BALANCES ----------------
+            let totalWallets = 0;
+            add('section', [C('4. Wallet & bank balances', null, '', 6)]);
+            add('header', [C('As of'), C('Wallet / bank'), C('Balance', null, 'num'), C(''), C(''), C('')]);
+            if (!wallets.length) add('empty', [C('No wallets added yet. Use MONEY ON WALLET on the Finance page.', null, '', 6)]);
+            wallets.forEach(w => {
+                totalWallets += w.amount;
+                add('data', [w.updated ? C(fmtISO(w.updated)) : C(''), C(w.name, null, 'indent'), C(money(w.amount), w.amount, 'num'), C(''), C(''), C('')]);
+            });
+            add('total', [C(''), C('TOTAL IN WALLETS & BANKS'), C(money(totalWallets), totalWallets, 'num'), C(''), C(''), C('')]);
+            blank();
+
+            // ---------------- 5. BALANCE SHEET ----------------
+            const totalAssets = totalWallets + totalSavings;
+            const netWorth = totalAssets - totalUnpaid;
+            add('section', [C('5. Balance sheet', null, '', 6)]);
+            add('header', [C(''), C('Account'), C('Amount', null, 'num'), C(''), C(''), C('')]);
+            add('label', [C(''), C('ASSETS'), C(''), C(''), C(''), C('')]);
+            add('data', [C(''), C('Wallets & banks', null, 'indent'), C(money(totalWallets), totalWallets, 'num'), C(''), C(''), C('')]);
+            add('data', [C(''), C('Savings', null, 'indent'), C(money(totalSavings), totalSavings, 'num'), C(''), C(''), C('')]);
+            add('sub', [C(''), C('TOTAL ASSETS'), C(money(totalAssets), totalAssets, 'num'), C(''), C(''), C('')]);
+            add('label', [C(''), C('LIABILITIES'), C(''), C(''), C(''), C('')]);
+            add('data', [C(''), C('Unpaid debts & payables', null, 'indent'), C(moneyOut(totalUnpaid), totalUnpaid, 'num'), C(''), C(''), C('')]);
+            add('sub', [C(''), C('TOTAL LIABILITIES'), C(moneyOut(totalUnpaid), totalUnpaid, 'num'), C(''), C(''), C('')]);
+            add('total', [C(''), C('NET WORTH (ASSETS − LIABILITIES)'), C(money(netWorth), netWorth, 'num' + (netWorth < 0 ? ' neg' : '')), C(''), C(''), C('')]);
+            add('note', [C('Note: wallets and savings are listed separately. If your savings are kept inside one of your wallets, that money is counted twice in Total Assets.', null, '', 6)]);
+
+            return rows;
+        }
+
+        // ------------------------------------------------------------------
+        // Draw the grid
+        // ------------------------------------------------------------------
+        let sheetRows = [];
+        let selectedEl = null;
+
+        function renderSheet(d) {
+            sheetRows = buildRows(d);
+            let html = '';
+            sheetRows.forEach((row, r) => {
+                html += '<tr class="' + row.cls + '"><td class="rownum">' + (r + 1) + '</td>';
+                let col = 0;
+                row.cells.forEach(cell => {
+                    const raw = cell.n !== null ? cell.n : cell.t;
+                    html += '<td class="cell ' + cell.cls + '"' + (cell.span > 1 ? ' colspan="' + cell.span + '"' : '') +
+                            ' data-ref="' + COLS[col] + (r + 1) + '" data-raw="' + esc(raw) + '" data-num="' + (cell.n !== null ? cell.n : '') + '">' + esc(cell.t) + '</td>';
+                    col += cell.span;
+                });
+                html += '</tr>';
+            });
+            $('sheet-body').innerHTML = html;
+            $('loading').classList.add('hidden');
+            $('sheet').classList.remove('hidden');
+        }
+
+        // click a cell: like Excel, the name box and formula bar follow it
+        document.addEventListener('click', ev => {
+            const td = ev.target.closest && ev.target.closest('td.cell');
+            if (!td) return;
+            if (selectedEl) selectedEl.classList.remove('sel');
+            selectedEl = td;
+            td.classList.add('sel');
+            $('namebox').textContent = td.dataset.ref;
+            $('formula').textContent = td.dataset.raw;
+            $('status-sum').textContent = td.dataset.num !== '' ? 'Value: ' + plain(td.dataset.num) : '';
+        });
+
+        // ------------------------------------------------------------------
+        // Export (opens in Excel)
+        // ------------------------------------------------------------------
+        function exportCSV() {
+            const lines = sheetRows.map(row => {
+                const out = [];
+                row.cells.forEach(cell => {
+                    out.push(cell.n !== null ? cell.n : cell.t);
+                    for (let i = 1; i < cell.span; i++) out.push('');
+                });
+                return out.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
+            });
+            const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            const d = new Date();
+            a.href = URL.createObjectURL(blob);
+            a.download = 'cash-flow-' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+
+        // ------------------------------------------------------------------
+        // Load the finance data (same data the Finance tab saves)
+        // ------------------------------------------------------------------
+        fetch('/api/finance')
+            .then(res => res.json())
+            .then(data => renderSheet(data))
+            .catch(() => {
+                $('loading').innerHTML = 'Could not load your finance data. <a href="/login" class="text-blue-400 underline">Log in again</a> and retry.';
+            });
+    </script>
+</body>
+</html>

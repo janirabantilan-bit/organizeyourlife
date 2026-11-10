@@ -5,15 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ page_title }} – My Scheduler</title>
     <script src="https://cdn.tailwindcss.com"></script>
-
-
-<!-- Makes the app open full-screen without a browser URL bar -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="mobile-web-app-capable" content="yes">
-<!-- Translates finger touch-dragging into HTML5 drag-and-drop for the Finance tab -->
-<script src="https://bernardo-castilho.github.io/DragDropTouch/DragDropTouch.js"></script>
-
     <style>
         .drop-zone { transition: all 0.2s ease; }
         .drop-zone.drag-over { background-color: rgba(59, 130, 246, 0.1); border: 2px dashed #3b82f6 !important; }
@@ -22,113 +13,108 @@
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body class="bg-[#0f0f11] text-gray-200 font-sans min-h-screen flex flex-col md:flex-row overflow-x-hidden md:overflow-hidden">
+<body class="bg-[#0f0f11] text-gray-200 font-sans h-screen flex overflow-hidden">
 
     {% include '_sidebar.html' %}
 
     <main class="flex-1 bg-[#0f0f11] overflow-hidden flex flex-col">
-        {% if active_page == 'finance' %}
+        {% if active_page == 'finance' or (page_title and page_title|lower == 'finance') %}
             
-            <!-- TOP BAR: ADD INCOME & SINGLE QUOTE SLOT -->
-            <header class="p-3.5 shrink-0 border-b border-[#26262b] flex flex-wrap md:flex-nowrap items-center gap-3 md:gap-4">
-                <!-- Add Income Button -->
-                <button onclick="openModal('modal-income')" class="thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 shrink-0 transition">
-                    <span class="text-base leading-none font-light">+</span> ADD INCOME
-                </button>
-
-                <!-- Quote Slot: Shows "+ ADD QUOTE" button when empty, or the Quote Box when filled -->
-                <div class="flex-1 max-w-xl flex items-center">
-                    <!-- State 1: Add Quote Button (Visible only when no quote exists) -->
-                    <button id="btn-add-quote" onclick="openModal('modal-quote')" class="thick-border bg-[#1c1c21] hover:bg-gray-800 text-blue-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition">
-                        <span class="text-base leading-none font-light">+</span> ADD QUOTE
+            <!-- TOP BAR: ADD INCOME, QUOTE SLOT, AND 3 BUTTONS (CASH FLOW, MONEY ON WALLET, BEER MONEY) -->
+            <header class="p-3.5 shrink-0 border-b border-[#26262b] flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3 flex-wrap">
+                    <button onclick="openModal('modal-income')" class="thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 shrink-0 transition">
+                        <span class="text-base leading-none font-light">+</span> ADD INCOME
                     </button>
 
-                    <!-- State 2: Active Quote Box (Replaces button once quote is added) -->
-                    <div id="quote-display-box" class="hidden relative w-full h-16 thick-border bg-[#141417] px-4 py-1.5 flex items-center justify-center text-center overflow-hidden shadow-inner group">
-                        <div id="quote-text-el" class="text-gray-100 italic font-semibold leading-snug break-words w-full"></div>
-                        <button onclick="deleteQuote()" class="absolute top-1 right-1.5 bg-red-600 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] opacity-0 group-hover:opacity-100 transition shadow" title="Delete Quote to add a new one">✕</button>
+                    <!-- Single Quote Slot -->
+                    <div class="flex items-center">
+                        <button id="btn-add-quote" onclick="openModal('modal-quote')" class="thick-border bg-[#1c1c21] hover:bg-gray-800 text-blue-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition">
+                            <span class="text-base leading-none font-light">+</span> ADD QUOTE
+                        </button>
+                        <div id="quote-display-box" class="hidden relative w-72 h-12 thick-border bg-[#141417] px-3 py-1 flex items-center justify-center text-center overflow-hidden shadow-inner group">
+                            <div id="quote-text-el" class="text-gray-100 italic font-semibold text-xs leading-snug break-words w-full"></div>
+                            <button onclick="deleteQuote()" class="absolute top-1 right-1 bg-red-600 hover:bg-red-500 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center text-[8px] opacity-0 group-hover:opacity-100 transition shadow" title="Delete Quote">✕</button>
+                        </div>
                     </div>
+                </div>
+
+                <!-- THE 3 RIGHT-SIDE FINANCE BUTTONS -->
+                <div class="flex items-center gap-2 flex-wrap">
+                    <!-- 1st Button: CASH FLOW -->
+                    <a href="/cashflow" class="thick-border bg-[#1c1c21] hover:bg-blue-600 hover:text-white text-blue-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5">
+                        📊 CASH FLOW
+                    </a>
+
+                    <!-- 2nd Button: MONEY ON WALLET (GCash, PayMaya, Cash, etc.) -->
+                    <button onclick="openModal('modal-wallet')" class="thick-border bg-[#1c1c21] hover:bg-emerald-600 hover:text-white text-emerald-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5">
+                        👛 MONEY ON WALLET: <span id="wallet-btn-amt" class="text-white font-black">₱0</span>
+                    </button>
+
+                    <!-- 3rd Button: BEER MONEY -->
+                    <button id="btn-beer-money" onclick="toggleBeerMoneyPage()" class="thick-border bg-[#1c1c21] hover:bg-amber-600 hover:text-white text-amber-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5">
+                        🍺 BEER MONEY
+                    </button>
                 </div>
             </header>
 
-            <!-- MAIN FINANCE BOARD -->
-            <div class="flex-1 flex flex-col overflow-hidden">
-                <!-- MAIN CANVAS: INCOMES & SAVE BOX -->
-               <div class="flex-1 p-3 md:p-4 overflow-y-auto flex flex-col md:flex-row gap-4 items-stretch md:items-start">
-                    
-                    <!-- Picture-Style Carousel Wrapper for Incomes -->
+            <!-- ACTIVE WALLET SUMMARY STRIP (Shows GCash, PayMaya, etc. balances at a glance) -->
+            <div id="wallet-summary-strip" class="px-4 py-1.5 bg-[#141417] border-b border-[#26262b] flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
+                <!-- Populated by JS -->
+            </div>
+
+            <!-- VIEW A: MAIN FINANCE BOARD -->
+            <div id="finance-view-board" class="flex-1 flex flex-col overflow-hidden">
+                <div class="flex-1 p-4 overflow-y-auto flex gap-4 items-start">
+                    <!-- Carousel Wrapper for Incomes -->
                     <div class="relative flex-1 flex items-center overflow-hidden">
-                        <!-- Left Arrow -->
-                        <button onclick="scrollIncomes(-220)" class="z-20 bg-black/80 hover:bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center border border-gray-500 shadow-lg shrink-0 mr-2 transition" title="Scroll Left">
-                            ◀
-                        </button>
-
-                        <!-- Incomes Container (Scrollbar Hidden) -->
-                        <div id="incomes-container" class="flex gap-4 flex-1 overflow-x-auto no-scrollbar py-2 items-start scroll-smooth">
-                            <!-- Income boxes injected here by JS -->
-                        </div>
-
-                        <!-- Right Arrow -->
-                        <button onclick="scrollIncomes(220)" class="z-20 bg-black/80 hover:bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center border border-gray-500 shadow-lg shrink-0 ml-2 transition" title="Scroll Right">
-                            ▶
-                        </button>
+                        <button onclick="scrollIncomes(-220)" class="z-20 bg-black/80 hover:bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center border border-gray-500 shadow-lg shrink-0 mr-2 transition">◀</button>
+                        <div id="incomes-container" class="flex gap-4 flex-1 overflow-x-auto no-scrollbar py-2 items-start scroll-smooth"></div>
+                        <button onclick="scrollIncomes(220)" class="z-20 bg-black/80 hover:bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center border border-gray-500 shadow-lg shrink-0 ml-2 transition">▶</button>
                     </div>
 
-                    <!-- RIGHT COLUMN: SAVE box + MONEY ON WALLET + CASH FLOW -->
-                    <div class="w-full md:w-48 shrink-0 flex flex-col gap-3">
-
-                    <!-- SAVE Box (25% Smaller, Amount directly below SAVE) -->
-                    <div class="w-full md:w-48 shrink-0 thick-border bg-[#141417] p-3 flex flex-col shadow-lg min-h-[160px] md:min-h-[220px]">
+                    <!-- SAVE Box -->
+                    <div class="w-48 shrink-0 thick-border bg-[#141417] p-3 flex flex-col shadow-lg min-h-[220px]">
                         <div class="text-center mb-3 border-b border-[#26262b] pb-2">
                             <div class="font-bold text-sm text-emerald-400 uppercase tracking-widest">SAVE</div>
                             <div id="savings-total" class="font-black text-xl text-gray-100 mt-0.5">0</div>
                         </div>
-                        <div id="zone-savings" class="flex-1 drop-zone flex flex-col gap-1.5 p-1.5 border-2 border-transparent" ondragover="allowDrop(event)" ondrop="drop(event, 'savings')" ondragleave="dragLeave(event)">
-                            <!-- Direct and Auto-replicated Savings tabs injected here -->
-                        </div>
+                        <div id="zone-savings" class="flex-1 drop-zone flex flex-col gap-1.5 p-1.5 border-2 border-transparent" ondragover="allowDrop(event)" ondrop="drop(event, 'savings')" ondragleave="dragLeave(event)"></div>
                     </div>
-
-                    <!-- MONEY ON WALLET (button opens/closes the wallet box below it) -->
-                    <button onclick="toggleWalletBox()" class="w-full thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center justify-between gap-2 transition">
-                        <span class="flex items-center gap-2"><span>💰</span> MONEY ON WALLET</span>
-                        <span id="wallet-caret" class="text-[10px] text-gray-400">▼</span>
-                    </button>
-
-                    <div id="wallet-box" class="hidden thick-border bg-[#141417] p-3 flex flex-col gap-2 shadow-lg min-h-[160px]">
-                        <div class="relative">
-                            <button onclick="toggleWalletMenu(event)" class="w-full border-2 border-dashed border-gray-500 hover:border-blue-400 text-blue-400 px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider transition">+ ADD A WALLET / BANK</button>
-                            <div id="wallet-menu" class="hidden absolute left-0 right-0 top-full mt-1 z-30 bg-[#1c1c21] border-2 border-gray-500 max-h-72 overflow-y-auto shadow-xl"></div>
-                        </div>
-                        <div id="wallet-list" class="flex-1 flex flex-col gap-1.5"></div>
-                        <div class="border-t border-[#26262b] pt-2 mt-1 flex items-end justify-between">
-                            <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Total</span>
-                            <span id="wallet-total" class="font-black text-lg text-gray-100">0</span>
-                        </div>
-                    </div>
-
-                    <!-- CASH FLOW (opens the spreadsheet-style page) -->
-                    <a href="/cashflow" class="w-full thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition">
-                        <span>📒</span> CASH FLOW
-                    </a>
-
-                    </div><!-- end right column -->
                 </div>
 
-                <!-- BOTTOM BAR: DEBTS & PAYABLES (25% Smaller) -->
+                <!-- BOTTOM BAR: DEBTS & PAYABLES -->
                 <div class="border-t border-[#26262b] bg-[#141417] p-4 shrink-0 min-h-[120px] flex flex-col gap-2.5">
                     <div>
                         <button onclick="openModal('modal-debt')" class="thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition">
-                            <span class="bg-gray-200 text-black rounded-full w-4 h-4 flex items-center justify-center text-sm leading-none">+</span> 
-                            ADD DEBTS AND PAYABLES
+                            <span class="bg-gray-200 text-black rounded-full w-4 h-4 flex items-center justify-center text-sm leading-none">+</span> ADD DEBTS AND PAYABLES
                         </button>
                     </div>
-                    <div id="zone-unassigned" class="flex-1 drop-zone flex flex-wrap gap-2 p-2 border border-[#2a2a32] bg-[#0f0f11] rounded min-h-[50px]" ondragover="allowDrop(event)" ondrop="drop(event, 'unassigned')" ondragleave="dragLeave(event)">
-                        <!-- Unassigned tabs injected here -->
-                    </div>
+                    <div id="zone-unassigned" class="flex-1 drop-zone flex flex-wrap gap-2 p-2 border border-[#2a2a32] bg-[#0f0f11] rounded min-h-[50px]" ondragover="allowDrop(event)" ondrop="drop(event, 'unassigned')" ondragleave="dragLeave(event)"></div>
                 </div>
             </div>
 
-            <!-- MODALS -->
+            <!-- VIEW B: BEER MONEY PAGE -->
+            <div id="finance-view-beer" class="hidden flex-1 p-6 overflow-y-auto flex flex-col gap-6 max-w-6xl mx-auto w-full">
+                <div class="flex items-center justify-between border-b border-[#26262b] pb-4">
+                    <div class="flex items-center gap-3">
+                        <button onclick="toggleBeerMoneyPage(false)" class="thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-200 px-3 py-1.5 text-xs font-bold uppercase">
+                            ← Back to Finance
+                        </button>
+                        <div>
+                            <h2 class="text-lg font-black text-amber-400 uppercase tracking-wider">🍺 Beer Money – Earning Apps & Websites</h2>
+                            <p class="text-xs text-gray-400">Track YouTube, Shopee, TikTok, Lazada, Mariabank, Globe, Alirewards, and Swagbucks.</p>
+                        </div>
+                    </div>
+                    <button onclick="openBeerModal()" class="thick-border bg-[#1c1c21] hover:bg-amber-600 hover:text-white text-amber-300 px-4 py-2 text-xs font-bold uppercase tracking-wider transition">
+                        + ADD APP / WEBSITE
+                    </button>
+                </div>
+
+                <div id="beer-money-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-8"></div>
+            </div>
+
+            <!-- MODALS FOR FINANCE -->
             <!-- Income Modal -->
             <div id="modal-income" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
                 <div class="bg-[#141417] border border-[#2a2a32] p-5 w-full max-w-xs rounded shadow-2xl">
@@ -140,6 +126,38 @@
                     <div class="flex justify-end gap-2 mt-4">
                         <button onclick="closeModals()" class="px-2.5 py-1 text-gray-400 hover:text-white text-xs font-medium">Cancel</button>
                         <button onclick="saveIncome()" class="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded transition">Add</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RESTORED: MONEY ON WALLET MODAL (GCash, PayMaya, Cash, Bank, etc.) -->
+            <div id="modal-wallet" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div class="bg-[#141417] thick-border p-6 w-full max-w-md rounded shadow-2xl max-h-[90vh] flex flex-col">
+                    <div class="flex items-center justify-between border-b border-[#26262b] pb-3 mb-4">
+                        <div>
+                            <h3 class="font-black text-sm uppercase text-emerald-400">👛 Money on Wallet</h3>
+                            <p class="text-[11px] text-gray-400">Update your balances across GCash, PayMaya, Cash & Banks</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[10px] text-gray-400 uppercase block">Total Balance</span>
+                            <span id="modal-wallet-total" class="text-lg font-black text-emerald-400">₱0</span>
+                        </div>
+                    </div>
+
+                    <!-- Wallet Options List -->
+                    <div id="wallet-options-list" class="space-y-2.5 overflow-y-auto pr-1 flex-1 max-h-[340px]">
+                        <!-- Populated by JS: GCash, PayMaya, Cash, Bank, etc. -->
+                    </div>
+
+                    <!-- Add Custom Wallet Option -->
+                    <div class="mt-4 pt-3 border-t border-[#26262b] flex gap-2">
+                        <input type="text" id="inp-new-wallet-name" placeholder="Add another wallet (e.g. BPI, UnionBank)..." class="flex-1 bg-[#1c1c21] border border-[#2a2a32] px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-emerald-500">
+                        <button onclick="addCustomWallet()" class="thick-border bg-[#1c1c21] hover:bg-emerald-700 text-emerald-300 hover:text-white px-3 py-1.5 text-xs font-bold uppercase transition">+ Add</button>
+                    </div>
+
+                    <div class="flex justify-end gap-2 mt-5 pt-3 border-t border-[#26262b]">
+                        <button onclick="closeModals()" class="px-3 py-1.5 text-gray-400 hover:text-white text-xs font-medium">Cancel</button>
+                        <button onclick="saveWallets()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase rounded transition shadow">Save Wallets</button>
                     </div>
                 </div>
             </div>
@@ -173,80 +191,273 @@
                 </div>
             </div>
 
-            <!-- Wallet / Bank Modal -->
-            <div id="modal-wallet" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-                <div class="bg-[#141417] border border-[#2a2a32] p-5 w-full max-w-xs rounded shadow-2xl">
-                    <h3 id="wallet-modal-title" class="font-bold text-sm mb-3 uppercase text-gray-100">Wallet</h3>
-                    <div class="space-y-2.5">
-                        <input type="text" id="inp-wallet-name" maxlength="40" placeholder="Bank name (e.g. BDO)" onkeydown="if(event.key==='Enter')saveWallet()" class="hidden w-full bg-[#1c1c21] border border-[#2a2a32] p-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
-                        <input type="number" step="0.01" min="0" id="inp-wallet-amt" placeholder="How much is in this wallet?" onkeydown="if(event.key==='Enter')saveWallet()" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
-                    </div>
-                    <div class="flex items-center justify-between gap-2 mt-4">
-                        <button id="btn-wallet-delete" onclick="deleteWallet()" class="hidden px-2.5 py-1 text-red-400 hover:text-red-300 text-xs font-medium">Delete</button>
-                        <div class="flex gap-2 ml-auto">
-                            <button onclick="closeWalletModal()" class="px-2.5 py-1 text-gray-400 hover:text-white text-xs font-medium">Cancel</button>
-                            <button onclick="saveWallet()" class="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded transition">Save</button>
+            <!-- Beer Money Modal -->
+            <div id="modal-beer" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div class="bg-[#141417] border border-[#2a2a32] p-6 w-full max-w-md rounded shadow-2xl max-h-[90vh] overflow-y-auto">
+                    <h3 class="font-bold text-sm mb-4 uppercase text-amber-400">🍺 Add App / Website</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="text-[11px] font-bold text-gray-400 uppercase">Select App / Website</label>
+                            <select id="inp-beer-platform" onchange="updateBeerFields()" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 mt-1">
+                                <option value="YouTube">YouTube (Money Earned)</option>
+                                <option value="Shopee">Shopee (Coins, ShopeePay, Affiliation Bonus)</option>
+                                <option value="TikTok">TikTok (Affiliation Bonus)</option>
+                                <option value="Lazada">Lazada (Coins, Lazada Money)</option>
+                                <option value="Mariabank">Mariabank (Referral Fees, Vouchers)</option>
+                                <option value="Globe">Globe (Reward Points)</option>
+                                <option value="Alirewards">Alirewards (Points, Vouchers)</option>
+                                <option value="Swagbucks">Swagbucks (Swagbucks Points)</option>
+                                <option value="Custom">Custom App / Website</option>
+                            </select>
                         </div>
+
+                        <div id="field-custom-name" class="hidden">
+                            <label class="text-[11px] font-bold text-gray-400 uppercase">App / Website Name</label>
+                            <input type="text" id="inp-beer-custom" placeholder="Enter custom site name" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 mt-1">
+                        </div>
+
+                        <div id="field-money">
+                            <label id="lbl-money" class="text-[11px] font-bold text-gray-400 uppercase">Money Earned</label>
+                            <input type="number" step="any" id="inp-beer-money" placeholder="0" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 mt-1">
+                        </div>
+
+                        <div id="field-coins" class="hidden">
+                            <label class="text-[11px] font-bold text-gray-400 uppercase">How Many Coins</label>
+                            <input type="number" step="any" id="inp-beer-coins" placeholder="0" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 mt-1">
+                        </div>
+
+                        <div id="field-shopeepay" class="hidden">
+                            <label class="text-[11px] font-bold text-gray-400 uppercase">Amount on ShopeePay</label>
+                            <input type="number" step="any" id="inp-beer-shopeepay" placeholder="0" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 mt-1">
+                        </div>
+
+                        <div id="field-affilt" class="hidden">
+                            <label class="text-[11px] font-bold text-gray-400 uppercase">Affiliation Bonus</label>
+                            <input type="number" step="any" id="inp-beer-affilt" placeholder="0" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 mt-1">
+                        </div>
+
+                        <div id="field-lazadamoney" class="hidden">
+                            <label class="text-[11px] font-bold text-gray-400 uppercase">Lazada Money</label>
+                            <input type="number" step="any" id="inp-beer-lazadamoney" placeholder="0" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 mt-1">
+                        </div>
+
+                        <div id="field-referral" class="hidden">
+                            <label class="text-[11px] font-bold text-gray-400 uppercase">Referral Fees</label>
+                            <input type="number" step="any" id="inp-beer-ref" placeholder="0" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 mt-1">
+                        </div>
+
+                        <div id="field-points" class="hidden">
+                            <label id="lbl-points" class="text-[11px] font-bold text-gray-400 uppercase">Reward Points</label>
+                            <input type="number" step="any" id="inp-beer-points" placeholder="0" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 mt-1">
+                        </div>
+
+                        <div id="field-vouchers" class="hidden">
+                            <label class="text-[11px] font-bold text-gray-400 uppercase">Vouchers (One per line or comma-separated to enumerate)</label>
+                            <textarea id="inp-beer-vouchers" rows="3" placeholder="e.g.&#10;₱100 Off Voucher&#10;Free Shipping Voucher&#10;10% Cashback" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 mt-1"></textarea>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-5">
+                        <button onclick="closeModals()" class="px-3 py-1 text-gray-400 hover:text-white text-xs font-medium">Cancel</button>
+                        <button onclick="saveBeerMoney()" class="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded transition">Save App / Website</button>
                     </div>
                 </div>
             </div>
 
             <script>
-               let fData = { incomes: [], tabs: {}, unassigned: [], savings: [], quote: "", wallets: [] };
+                const DEFAULT_WALLETS = [
+                    { id: 'w_gcash', name: 'GCash', icon: '🔵', color: 'border-blue-500/60 text-blue-300', amount: 0 },
+                    { id: 'w_paymaya', name: 'PayMaya (Maya)', icon: '🟢', color: 'border-emerald-500/60 text-emerald-300', amount: 0 },
+                    { id: 'w_cash', name: 'Cash on Hand', icon: '💵', color: 'border-amber-500/60 text-amber-300', amount: 0 },
+                    { id: 'w_bank', name: 'Bank (BDO / BPI)', icon: '🏦', color: 'border-indigo-500/60 text-indigo-300', amount: 0 },
+                    { id: 'w_mariabank', name: 'Mariabank / SeaBank', icon: '🟧', color: 'border-orange-500/60 text-orange-300', amount: 0 },
+                    { id: 'w_gotyme', name: 'GoTyme', icon: '🩵', color: 'border-cyan-500/60 text-cyan-300', amount: 0 },
+                    { id: 'w_shopeepay', name: 'ShopeePay', icon: '🛍️', color: 'border-red-500/60 text-red-300', amount: 0 },
+                    { id: 'w_coins', name: 'Coins.ph', icon: '🪙', color: 'border-yellow-500/60 text-yellow-300', amount: 0 }
+                ];
 
-function fetchFinanceData() {
-    fetch('/api/finance')
-        .then(res => res.json())
-        .then(data => {
-            fData = data;
-            normalizeFData();
-            renderUI();
-        });
-}
+                let fData = JSON.parse(localStorage.getItem('fData')) || {
+                    incomes: [],
+                    tabs: {},
+                    unassigned: [],
+                    savings: [],
+                    quote: "",
+                    wallets: DEFAULT_WALLETS,
+                    beerMoney: []
+                };
+                if (!fData.beerMoney) fData.beerMoney = [];
+                if (!fData.wallets || !Array.isArray(fData.wallets) || fData.wallets.length === 0) {
+                    fData.wallets = JSON.parse(JSON.stringify(DEFAULT_WALLETS));
+                    if (typeof fData.wallet === 'number' && fData.wallet > 0) {
+                        fData.wallets[0].amount = fData.wallet;
+                    }
+                }
 
-function saveState() {
-    renderUI();
-    fetch('/api/finance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fData)
-    });
-}
-
-window.onload = fetchFinanceData;
+                function saveState() {
+                    localStorage.setItem('fData', JSON.stringify(fData));
+                    renderUI();
+                }
 
                 function generateId() { return Math.random().toString(36).substr(2, 9); }
+                function scrollIncomes(offset) { document.getElementById('incomes-container').scrollBy({ left: offset, behavior: 'smooth' }); }
 
-                function scrollIncomes(offset) {
-                    const container = document.getElementById('incomes-container');
-                    container.scrollBy({ left: offset, behavior: 'smooth' });
+                function toggleBeerMoneyPage(forceBeer) {
+                    const boardView = document.getElementById('finance-view-board');
+                    const beerView = document.getElementById('finance-view-beer');
+                    const btnBeer = document.getElementById('btn-beer-money');
+                    const showBeer = typeof forceBeer === 'boolean' ? forceBeer : beerView.classList.contains('hidden');
+
+                    if (showBeer) {
+                        boardView.classList.add('hidden');
+                        beerView.classList.remove('hidden');
+                        btnBeer.className = "thick-border bg-amber-600 text-white px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5";
+                    } else {
+                        beerView.classList.add('hidden');
+                        boardView.classList.remove('hidden');
+                        btnBeer.className = "thick-border bg-[#1c1c21] hover:bg-amber-600 hover:text-white text-amber-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5";
+                    }
                 }
 
                 function openModal(id) {
                     if (id === 'modal-quote' && fData.quote && fData.quote.trim() !== "") return;
+                    if (id === 'modal-wallet') {
+                        renderWalletModalInputs();
+                    }
                     document.getElementById(id).classList.remove('hidden');
                 }
-                
+
+                function renderWalletModalInputs() {
+                    const list = document.getElementById('wallet-options-list');
+                    list.innerHTML = '';
+                    let total = 0;
+
+                    fData.wallets.forEach((w, idx) => {
+                        total += parseFloat(w.amount) || 0;
+                        const row = document.createElement('div');
+                        row.className = "flex items-center justify-between gap-2 bg-[#1c1c21] border border-[#2a2a32] px-3 py-2 rounded";
+                        row.innerHTML = `
+                            <div class="flex items-center gap-2 min-w-[140px]">
+                                <span>${w.icon || '💳'}</span>
+                                <span class="text-xs font-bold text-gray-200">${w.name}</span>
+                            </div>
+                            <div class="flex items-center gap-2 flex-1 justify-end">
+                                <span class="text-xs text-gray-400">₱</span>
+                                <input type="number" step="any" data-wallet-idx="${idx}" oninput="updateLiveWalletTotal()" value="${w.amount || 0}" class="wallet-amt-input w-28 bg-[#141417] border border-[#2a2a32] px-2 py-1 text-xs text-right font-bold text-white focus:outline-none focus:border-emerald-500 rounded">
+                                ${idx >= 8 ? `<button onclick="removeCustomWallet(${idx})" class="text-gray-500 hover:text-red-400 text-xs px-1" title="Remove">✕</button>` : ''}
+                            </div>
+                        `;
+                        list.appendChild(row);
+                    });
+
+                    document.getElementById('modal-wallet-total').innerText = '₱' + total.toLocaleString();
+                }
+
+                function updateLiveWalletTotal() {
+                    let sum = 0;
+                    document.querySelectorAll('.wallet-amt-input').forEach(inp => {
+                        sum += parseFloat(inp.value) || 0;
+                    });
+                    document.getElementById('modal-wallet-total').innerText = '₱' + sum.toLocaleString();
+                }
+
+                function addCustomWallet() {
+                    const inp = document.getElementById('inp-new-wallet-name');
+                    const name = inp.value.trim();
+                    if (!name) return;
+                    // First sync any typed amounts before re-rendering
+                    document.querySelectorAll('.wallet-amt-input').forEach(el => {
+                        const i = parseInt(el.getAttribute('data-wallet-idx'));
+                        if (fData.wallets[i]) fData.wallets[i].amount = parseFloat(el.value) || 0;
+                    });
+                    fData.wallets.push({
+                        id: 'w_' + generateId(),
+                        name: name,
+                        icon: '💳',
+                        color: 'border-purple-500/60 text-purple-300',
+                        amount: 0
+                    });
+                    inp.value = '';
+                    renderWalletModalInputs();
+                }
+
+                function removeCustomWallet(idx) {
+                    fData.wallets.splice(idx, 1);
+                    renderWalletModalInputs();
+                }
+
+                function saveWallets() {
+                    document.querySelectorAll('.wallet-amt-input').forEach(el => {
+                        const idx = parseInt(el.getAttribute('data-wallet-idx'));
+                        if (fData.wallets[idx]) {
+                            fData.wallets[idx].amount = parseFloat(el.value) || 0;
+                        }
+                    });
+                    closeModals();
+                    saveState();
+                }
+
+                function openBeerModal() {
+                    document.getElementById('inp-beer-platform').value = 'YouTube';
+                    updateBeerFields();
+                    document.getElementById('modal-beer').classList.remove('hidden');
+                }
+
+                function updateBeerFields() {
+                    const p = document.getElementById('inp-beer-platform').value;
+                    const ids = ['field-custom-name', 'field-money', 'field-coins', 'field-shopeepay', 'field-affilt', 'field-lazadamoney', 'field-referral', 'field-points', 'field-vouchers'];
+                    ids.forEach(id => document.getElementById(id).classList.add('hidden'));
+
+                    if (p === 'YouTube') {
+                        document.getElementById('field-money').classList.remove('hidden');
+                    } else if (p === 'Shopee') {
+                        document.getElementById('field-coins').classList.remove('hidden');
+                        document.getElementById('field-shopeepay').classList.remove('hidden');
+                        document.getElementById('field-affilt').classList.remove('hidden');
+                    } else if (p === 'TikTok') {
+                        document.getElementById('field-affilt').classList.remove('hidden');
+                    } else if (p === 'Lazada') {
+                        document.getElementById('field-coins').classList.remove('hidden');
+                        document.getElementById('field-lazadamoney').classList.remove('hidden');
+                    } else if (p === 'Mariabank') {
+                        document.getElementById('field-referral').classList.remove('hidden');
+                        document.getElementById('field-vouchers').classList.remove('hidden');
+                    } else if (p === 'Globe') {
+                        document.getElementById('lbl-points').innerText = 'Globe Reward Points';
+                        document.getElementById('field-points').classList.remove('hidden');
+                    } else if (p === 'Alirewards') {
+                        document.getElementById('lbl-points').innerText = 'Alirewards Points';
+                        document.getElementById('field-points').classList.remove('hidden');
+                        document.getElementById('field-vouchers').classList.remove('hidden');
+                    } else if (p === 'Swagbucks') {
+                        document.getElementById('lbl-points').innerText = 'Swagbucks Points';
+                        document.getElementById('field-points').classList.remove('hidden');
+                    } else {
+                        ids.forEach(id => document.getElementById(id).classList.remove('hidden'));
+                    }
+                }
+
                 function closeModals() {
-                    document.getElementById('modal-income').classList.add('hidden');
-                    document.getElementById('modal-debt').classList.add('hidden');
-                    document.getElementById('modal-quote').classList.add('hidden');
+                    ['modal-income', 'modal-debt', 'modal-quote', 'modal-wallet', 'modal-beer'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.classList.add('hidden');
+                    });
                     document.getElementById('inp-inc-date').value = '';
                     document.getElementById('inp-inc-amt').value = '';
                     document.getElementById('inp-debt-desc').value = '';
                     document.getElementById('inp-debt-amt').value = '';
                     document.getElementById('inp-quote-text').value = '';
+                    ['inp-beer-custom', 'inp-beer-money', 'inp-beer-coins', 'inp-beer-shopeepay', 'inp-beer-affilt', 'inp-beer-lazadamoney', 'inp-beer-ref', 'inp-beer-points', 'inp-beer-vouchers'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.value = '';
+                    });
                 }
 
                 function saveIncome() {
                     const dateRaw = document.getElementById('inp-inc-date').value;
                     const amt = parseFloat(document.getElementById('inp-inc-amt').value);
                     if (!dateRaw || isNaN(amt)) return;
-                    
                     const dateObj = new Date(dateRaw + 'T00:00:00');
                     const displayDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-                    fData.incomes.push({ id: 'inc_' + generateId(), date: displayDate, iso: dateRaw, amount: amt, tabs: [] });
+                    fData.incomes.push({ id: 'inc_' + generateId(), date: displayDate, amount: amt, tabs: [] });
                     closeModals();
                     saveState();
                 }
@@ -255,11 +466,9 @@ window.onload = fetchFinanceData;
                     const desc = document.getElementById('inp-debt-desc').value.trim();
                     const amt = parseFloat(document.getElementById('inp-debt-amt').value);
                     if (!desc || isNaN(amt)) return;
-                    
                     const id = 'tab_' + generateId();
-                    fData.tabs[id] = { id: id, desc: desc, amount: amt, added: todayISO() };
+                    fData.tabs[id] = { id: id, desc: desc, amount: amt };
                     fData.unassigned.push(id);
-                    
                     closeModals();
                     saveState();
                 }
@@ -272,22 +481,47 @@ window.onload = fetchFinanceData;
                     closeModals();
                     saveState();
                 }
+                function deleteQuote() { fData.quote = ""; saveState(); }
 
-                function deleteQuote() {
-                    fData.quote = "";
+                function saveBeerMoney() {
+                    const platform = document.getElementById('inp-beer-platform').value;
+                    const custom = document.getElementById('inp-beer-custom').value.trim();
+                    const rawVouchers = document.getElementById('inp-beer-vouchers').value.trim();
+                    const voucherList = rawVouchers
+                        ? rawVouchers.split(/[\n,]+/).map(v => v.trim()).filter(Boolean)
+                        : [];
+
+                    const item = {
+                        id: 'beer_' + generateId(),
+                        platform: platform === 'Custom' && custom ? custom : platform,
+                        money: parseFloat(document.getElementById('inp-beer-money').value) || 0,
+                        coins: parseFloat(document.getElementById('inp-beer-coins').value) || 0,
+                        shopeepay: parseFloat(document.getElementById('inp-beer-shopeepay').value) || 0,
+                        affilt: parseFloat(document.getElementById('inp-beer-affilt').value) || 0,
+                        lazadamoney: parseFloat(document.getElementById('inp-beer-lazadamoney').value) || 0,
+                        ref: parseFloat(document.getElementById('inp-beer-ref').value) || 0,
+                        points: parseFloat(document.getElementById('inp-beer-points').value) || 0,
+                        vouchers: voucherList
+                    };
+                    fData.beerMoney.push(item);
+                    closeModals();
                     saveState();
                 }
 
-                // Dynamically scales the font size so the quote always fits inside the box
+                function deleteBeerCard(id) {
+                    if (confirm("Remove this App/Website card?")) {
+                        fData.beerMoney = fData.beerMoney.filter(b => b.id !== id);
+                        saveState();
+                    }
+                }
+
                 function fitQuoteText() {
                     const box = document.getElementById('quote-display-box');
                     const textEl = document.getElementById('quote-text-el');
                     if (!box || !textEl || box.classList.contains('hidden')) return;
-
-                    let size = 18;
+                    let size = 14;
                     textEl.style.fontSize = size + 'px';
-
-                    while ((textEl.scrollHeight > box.clientHeight - 12 || textEl.scrollWidth > box.clientWidth - 24) && size > 8) {
+                    while ((textEl.scrollHeight > box.clientHeight - 8 || textEl.scrollWidth > box.clientWidth - 16) && size > 8) {
                         size -= 1;
                         textEl.style.fontSize = size + 'px';
                     }
@@ -297,15 +531,12 @@ window.onload = fetchFinanceData;
                     const btnAdd = document.getElementById('btn-add-quote');
                     const quoteBox = document.getElementById('quote-display-box');
                     const textEl = document.getElementById('quote-text-el');
-
                     if (fData.quote && fData.quote.trim() !== "") {
-                        // Hide "+ ADD QUOTE" button and show the actual Quote Box in its place
                         btnAdd.classList.add('hidden');
                         quoteBox.classList.remove('hidden');
                         textEl.innerText = `"${fData.quote}"`;
                         fitQuoteText();
                     } else {
-                        // No quote exists: show "+ ADD QUOTE" button and hide Quote Box
                         quoteBox.classList.add('hidden');
                         btnAdd.classList.remove('hidden');
                         textEl.innerText = "";
@@ -313,11 +544,11 @@ window.onload = fetchFinanceData;
                 }
 
                 function deleteIncome(id) {
-                    if (confirm("Delete this income box? Attached tabs will return to the bottom pool.")) {
-                        const incIndex = fData.incomes.findIndex(i => i.id === id);
-                        if (incIndex > -1) {
-                            fData.unassigned.push(...fData.incomes[incIndex].tabs);
-                            fData.incomes.splice(incIndex, 1);
+                    if (confirm("Delete this income box? Attached tabs return to pool.")) {
+                        const idx = fData.incomes.findIndex(i => i.id === id);
+                        if (idx > -1) {
+                            fData.unassigned.push(...fData.incomes[idx].tabs);
+                            fData.incomes.splice(idx, 1);
                             saveState();
                         }
                     }
@@ -325,7 +556,7 @@ window.onload = fetchFinanceData;
 
                 function deleteTab(ev, id) {
                     ev.stopPropagation();
-                    if (confirm("Delete this tab entirely?")) {
+                    if (confirm("Delete this tab?")) {
                         delete fData.tabs[id];
                         fData.unassigned = fData.unassigned.filter(tid => tid !== id);
                         fData.savings = fData.savings.filter(tid => tid !== id);
@@ -341,286 +572,451 @@ window.onload = fetchFinanceData;
                     el.draggable = true;
                     el.id = tab.id;
                     el.ondragstart = (ev) => ev.dataTransfer.setData("text/plain", tab.id);
-                    
-                    el.innerHTML = `
-                        <span>${tab.amount} ${tab.desc}</span>
-                        <button onclick="deleteTab(event, '${tab.id}')" class="absolute -top-2 -right-2 bg-red-600 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] opacity-0 group-hover:opacity-100 transition shadow" title="Delete Tab">✕</button>
-                    `;
+                    el.innerHTML = `<span>${tab.amount} ${tab.desc}</span><button onclick="deleteTab(event, '${tab.id}')" class="absolute -top-2 -right-2 bg-red-600 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] opacity-0 group-hover:opacity-100 transition shadow">✕</button>`;
                     return el;
                 }
 
                 function createAutoSavingsElement(tab, incomeDate) {
                     const el = document.createElement('div');
                     el.className = "relative thick-border border-emerald-500/70 bg-[#1c2621] px-2.5 py-1 text-center font-bold text-xs text-emerald-300 shadow group";
-                    el.innerHTML = `
-                        <div class="flex flex-col items-center leading-tight">
-                            <span>${tab.amount}</span>
-                            <span class="text-[10px] text-emerald-400/80 font-normal">From: ${incomeDate}</span>
-                        </div>
-                        <button onclick="deleteTab(event, '${tab.id}')" class="absolute -top-2 -right-2 bg-red-600 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] opacity-0 group-hover:opacity-100 transition shadow" title="Delete Savings Tab">✕</button>
-                    `;
+                    el.innerHTML = `<div class="flex flex-col items-center leading-tight"><span>${tab.amount}</span><span class="text-[10px] text-emerald-400/80 font-normal">From: ${incomeDate}</span></div><button onclick="deleteTab(event, '${tab.id}')" class="absolute -top-2 -right-2 bg-red-600 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] opacity-0 group-hover:opacity-100 transition shadow">✕</button>`;
                     return el;
                 }
 
                 function renderUI() {
-                    const incContainer = document.getElementById('incomes-container');
-                    incContainer.innerHTML = '';
-                    
-                    const savingsZone = document.getElementById('zone-savings');
-                    savingsZone.innerHTML = '';
-                    let savingsSum = 0;
+                    // Render Wallets Total & Top Strip Badges (GCash, PayMaya, etc.)
+                    let totalWalletAmt = 0;
+                    const strip = document.getElementById('wallet-summary-strip');
+                    if (strip) strip.innerHTML = '<span class="text-[10px] font-bold uppercase text-gray-500 mr-1">Wallets:</span>';
 
-                    // 1. Render Incomes & Detect "SAVINGS" tabs to auto-replicate into SAVE box
-                    fData.incomes.forEach(inc => {
-                        let deducted = 0;
-                        inc.tabs.forEach(tId => {
-                            const tabObj = fData.tabs[tId];
-                            if (tabObj) {
-                                deducted += tabObj.amount;
-                                if (tabObj.desc.trim().toUpperCase() === 'SAVINGS') {
-                                    savingsZone.appendChild(createAutoSavingsElement(tabObj, inc.date));
-                                    savingsSum += tabObj.amount;
-                                }
-                            }
-                        });
-                        let remaining = inc.amount - deducted;
-
-                        const div = document.createElement('div');
-                        div.className = "relative w-48 shrink-0 thick-border bg-[#141417] p-3 flex flex-col shadow-lg min-h-[220px] group";
-                        div.innerHTML = `
-                            <button onclick="deleteIncome('${inc.id}')" class="absolute top-1.5 right-1.5 text-gray-500 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition" title="Delete Income">✕</button>
-                            <div class="text-center mb-3 border-b border-[#26262b] pb-2">
-                                <div class="font-black text-xl text-gray-100">${remaining}</div>
-                                <div class="text-[11px] font-bold tracking-wider text-gray-400 mt-0.5">${inc.date}</div>
-                            </div>
-                            <div id="${inc.id}" class="flex-1 drop-zone flex flex-col gap-1.5 min-h-[90px] p-1.5 border-2 border-transparent" ondragover="allowDrop(event)" ondrop="drop(event, '${inc.id}')" ondragleave="dragLeave(event)">
-                            </div>
-                        `;
-                        incContainer.appendChild(div);
-
-                        const dropZone = div.querySelector('.drop-zone');
-                        inc.tabs.forEach(tId => {
-                            if (fData.tabs[tId]) dropZone.appendChild(createTabElement(fData.tabs[tId]));
-                        });
-                    });
-
-                    // 2. Render Unassigned Debts/Payables
-                    const unassignedZone = document.getElementById('zone-unassigned');
-                    unassignedZone.innerHTML = '';
-                    fData.unassigned.forEach(tId => {
-                        if (fData.tabs[tId]) unassignedZone.appendChild(createTabElement(fData.tabs[tId]));
-                    });
-
-                    // 3. Render Any Directly Dragged Savings Tabs & Update Total Below SAVE
-                    fData.savings.forEach(tId => {
-                        if (fData.tabs[tId]) {
-                            savingsZone.appendChild(createTabElement(fData.tabs[tId]));
-                            savingsSum += fData.tabs[tId].amount;
+                    fData.wallets.forEach(w => {
+                        const val = parseFloat(w.amount) || 0;
+                        totalWalletAmt += val;
+                        if (strip) {
+                            const pill = document.createElement('button');
+                            pill.onclick = () => openModal('modal-wallet');
+                            pill.className = `px-2 py-0.5 rounded border text-[11px] font-bold flex items-center gap-1 shrink-0 bg-[#1c1c21] hover:bg-gray-800 transition ${w.color || 'border-gray-600 text-gray-300'}`;
+                            pill.innerHTML = `<span>${w.icon || '💳'}</span><span>${w.name}:</span><span class="text-white">₱${val.toLocaleString()}</span>`;
+                            strip.appendChild(pill);
                         }
                     });
-                    document.getElementById('savings-total').innerText = savingsSum;
 
-                    // 4. Render Single Quote Button / Box Replacement
-                    renderQuoteSlot();
+                    const walletBtnAmt = document.getElementById('wallet-btn-amt');
+                    if (walletBtnAmt) walletBtnAmt.innerText = '₱' + totalWalletAmt.toLocaleString();
 
-                    // 5. Wallet box
-                    renderWallets();
+                    const incContainer = document.getElementById('incomes-container');
+                    if (incContainer) {
+                        incContainer.innerHTML = '';
+                        const savingsZone = document.getElementById('zone-savings');
+                        savingsZone.innerHTML = '';
+                        let savingsSum = 0;
+
+                        fData.incomes.forEach(inc => {
+                            let deducted = 0;
+                            inc.tabs.forEach(tId => {
+                                const tabObj = fData.tabs[tId];
+                                if (tabObj) {
+                                    deducted += tabObj.amount;
+                                    if (tabObj.desc.trim().toUpperCase() === 'SAVINGS') {
+                                        savingsZone.appendChild(createAutoSavingsElement(tabObj, inc.date));
+                                        savingsSum += tabObj.amount;
+                                    }
+                                }
+                            });
+                            let remaining = inc.amount - deducted;
+
+                            const div = document.createElement('div');
+                            div.className = "relative w-48 shrink-0 thick-border bg-[#141417] p-3 flex flex-col shadow-lg min-h-[220px] group";
+                            div.innerHTML = `<button onclick="deleteIncome('${inc.id}')" class="absolute top-1.5 right-1.5 text-gray-500 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition">✕</button><div class="text-center mb-3 border-b border-[#26262b] pb-2"><div class="font-black text-xl text-gray-100">${remaining}</div><div class="text-[11px] font-bold tracking-wider text-gray-400 mt-0.5">${inc.date}</div></div><div id="${inc.id}" class="flex-1 drop-zone flex flex-col gap-1.5 min-h-[90px] p-1.5 border-2 border-transparent" ondragover="allowDrop(event)" ondrop="drop(event, '${inc.id}')" ondragleave="dragLeave(event)"></div>`;
+                            incContainer.appendChild(div);
+
+                            const dropZone = div.querySelector('.drop-zone');
+                            inc.tabs.forEach(tId => { if (fData.tabs[tId]) dropZone.appendChild(createTabElement(fData.tabs[tId])); });
+                        });
+
+                        const unassignedZone = document.getElementById('zone-unassigned');
+                        unassignedZone.innerHTML = '';
+                        fData.unassigned.forEach(tId => { if (fData.tabs[tId]) unassignedZone.appendChild(createTabElement(fData.tabs[tId])); });
+
+                        fData.savings.forEach(tId => {
+                            if (fData.tabs[tId]) { savingsZone.appendChild(createTabElement(fData.tabs[tId])); savingsSum += fData.tabs[tId].amount; }
+                        });
+                        document.getElementById('savings-total').innerText = savingsSum;
+                        renderQuoteSlot();
+                    }
+
+                    // Render Beer Money Cards
+                    const beerGrid = document.getElementById('beer-money-grid');
+                    if (beerGrid) {
+                        beerGrid.innerHTML = '';
+                        if (fData.beerMoney.length === 0) {
+                            beerGrid.innerHTML = `<div class="col-span-full text-center py-12 text-gray-500 text-xs italic">No earning apps/websites added yet. Click "+ ADD APP / WEBSITE" above!</div>`;
+                        } else {
+                            fData.beerMoney.forEach(b => {
+                                const card = document.createElement('div');
+                                card.className = "relative thick-border bg-[#141417] p-4 flex flex-col gap-2 shadow-lg group";
+
+                                let rows = '';
+                                if (b.platform === 'YouTube' || b.money > 0) {
+                                    rows += `<div class="flex justify-between text-xs"><span class="text-gray-400">Money Earned:</span><span class="font-bold text-emerald-400">₱${b.money}</span></div>`;
+                                }
+                                if (b.platform === 'Shopee' || b.platform === 'Lazada' || b.coins > 0) {
+                                    rows += `<div class="flex justify-between text-xs"><span class="text-gray-400">Coins:</span><span class="font-bold text-amber-400">${b.coins}</span></div>`;
+                                }
+                                if (b.platform === 'Shopee' || b.shopeepay > 0) {
+                                    rows += `<div class="flex justify-between text-xs"><span class="text-gray-400">ShopeePay:</span><span class="font-bold text-orange-400">₱${b.shopeepay}</span></div>`;
+                                }
+                                if (b.platform === 'Shopee' || b.platform === 'TikTok' || b.affilt > 0) {
+                                    rows += `<div class="flex justify-between text-xs"><span class="text-gray-400">Affiliation Bonus:</span><span class="font-bold text-blue-400">₱${b.affilt}</span></div>`;
+                                }
+                                if (b.platform === 'Lazada' || b.lazadamoney > 0) {
+                                    rows += `<div class="flex justify-between text-xs"><span class="text-gray-400">Lazada Money:</span><span class="font-bold text-cyan-400">₱${b.lazadamoney}</span></div>`;
+                                }
+                                if (b.platform === 'Mariabank' || b.ref > 0) {
+                                    rows += `<div class="flex justify-between text-xs"><span class="text-gray-400">Referral Fees:</span><span class="font-bold text-purple-400">₱${b.ref}</span></div>`;
+                                }
+                                if (b.platform === 'Globe' || b.platform === 'Alirewards' || b.platform === 'Swagbucks' || b.points > 0) {
+                                    const ptLabel = b.platform === 'Swagbucks' ? 'Swagbucks Points' : 'Reward Points';
+                                    rows += `<div class="flex justify-between text-xs"><span class="text-gray-400">${ptLabel}:</span><span class="font-bold text-yellow-400">${b.points}</span></div>`;
+                                }
+
+                                let voucherListHTML = '';
+                                const vArr = Array.isArray(b.vouchers) ? b.vouchers : (b.vouchers ? String(b.vouchers).split(/[\n,]+/).map(x => x.trim()).filter(Boolean) : []);
+                                if (vArr.length > 0 || b.platform === 'Mariabank' || b.platform === 'Alirewards') {
+                                    voucherListHTML = `
+                                        <div class="mt-2 pt-2 border-t border-[#26262b]">
+                                            <span class="text-[10px] uppercase font-bold text-amber-300 block mb-1">Enumerated Vouchers (${vArr.length}):</span>
+                                            ${vArr.length > 0
+                                                ? `<ol class="list-decimal list-inside text-xs text-gray-200 space-y-1 bg-[#1c1c21] p-2 rounded border border-[#2a2a32]">${vArr.map(v => `<li>${v}</li>`).join('')}</ol>`
+                                                : `<span class="text-[11px] text-gray-500 italic">No vouchers listed</span>`
+                                            }
+                                        </div>
+                                    `;
+                                }
+
+                                card.innerHTML = `
+                                    <div class="flex items-center justify-between border-b border-[#26262b] pb-2">
+                                        <span class="font-black text-sm text-amber-400 uppercase tracking-wide">${b.platform}</span>
+                                        <button onclick="deleteBeerCard('${b.id}')" class="text-gray-500 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition" title="Delete">✕</button>
+                                    </div>
+                                    <div class="flex flex-col gap-1.5 py-1">
+                                        ${rows}
+                                        ${voucherListHTML}
+                                    </div>
+                                `;
+                                beerGrid.appendChild(card);
+                            });
+                        }
+                    }
                 }
 
-                function allowDrop(ev) {
-                    ev.preventDefault();
-                    ev.currentTarget.classList.add('drag-over');
-                }
-                function dragLeave(ev) {
-                    ev.currentTarget.classList.remove('drag-over');
-                }
+                function allowDrop(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drag-over'); }
+                function dragLeave(ev) { ev.currentTarget.classList.remove('drag-over'); }
                 function drop(ev, targetZone) {
-                    ev.preventDefault();
-                    ev.currentTarget.classList.remove('drag-over');
-                    
+                    ev.preventDefault(); ev.currentTarget.classList.remove('drag-over');
                     const tabId = ev.dataTransfer.getData("text/plain");
                     if (!tabId || !fData.tabs[tabId]) return;
-                    
                     fData.unassigned = fData.unassigned.filter(id => id !== tabId);
                     fData.savings = fData.savings.filter(id => id !== tabId);
                     fData.incomes.forEach(inc => inc.tabs = inc.tabs.filter(id => id !== tabId));
-
-                    if (targetZone === 'unassigned') {
-                        fData.unassigned.push(tabId);
-                        delete fData.tabs[tabId].assigned;
-                    } else if (targetZone === 'savings') {
-                        fData.savings.push(tabId);
-                        fData.tabs[tabId].assigned = todayISO();
-                    } else {
-                        const inc = fData.incomes.find(i => i.id === targetZone);
-                        if (inc) { inc.tabs.push(tabId); fData.tabs[tabId].assigned = todayISO(); }
-                    }
+                    if (targetZone === 'unassigned') fData.unassigned.push(tabId);
+                    else if (targetZone === 'savings') fData.savings.push(tabId);
+                    else { const inc = fData.incomes.find(i => i.id === targetZone); if (inc) inc.tabs.push(tabId); }
                     saveState();
                 }
 
-                // ===================== MONEY ON WALLET =====================
-                const WALLET_OPTIONS = [
-                    { key: 'gcash',      name: 'GCash',       color: '#007cff' },
-                    { key: 'paymaya',    name: 'PayMaya',     color: '#16a34a' },
-                    { key: 'shopeepay',  name: 'Shopee Pay',  color: '#ee4d2d' },
-                    { key: 'lazada',     name: 'Lazada',      color: '#4f46e5' },
-                    { key: 'fortunepay', name: 'Fortune Pay', color: '#ca8a04' },
-                    { key: 'payoneer',   name: 'Payoneer',    color: '#ea580c' },
-                    { key: 'paypal',     name: 'PayPal',      color: '#2563eb' },
-                    { key: 'maribank',   name: 'MariBank',    color: '#7c3aed' },
-                    { key: 'coins',      name: 'Coins',       color: '#0891b2' },
-                    { key: 'other',      name: 'Other banks', color: '#6b7280' }
-                ];
-                let walletOpen = false;
-                try { walletOpen = localStorage.getItem('walletBoxOpen') === '1'; } catch (e) {}
-                let walletEditId = null;   // wallet being edited (null = adding a new one)
-                let walletPickKey = null;  // option chosen from the list when adding
-
-                function normalizeFData() {
-                    fData.incomes = fData.incomes || [];
-                    fData.tabs = fData.tabs || {};
-                    fData.unassigned = fData.unassigned || [];
-                    fData.savings = fData.savings || [];
-                    fData.quote = fData.quote || "";
-                    fData.wallets = fData.wallets || [];
-                }
-
-                function todayISO() {
-                    const d = new Date();
-                    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-                }
-                function walletMoney(n) {
-                    const v = Math.round((Number(n) || 0) * 100) / 100;
-                    return v.toLocaleString('en-US', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 });
-                }
-                function walletEsc(s) {
-                    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-                }
-                function walletAsOf(iso) {
-                    if (!iso) return '';
-                    const [y, m, d] = iso.split('-').map(Number);
-                    return 'as of ' + new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                }
-
-                function toggleWalletBox() {
-                    walletOpen = !walletOpen;
-                    try { localStorage.setItem('walletBoxOpen', walletOpen ? '1' : '0'); } catch (e) {}
-                    document.getElementById('wallet-menu').classList.add('hidden');
-                    renderWallets();
-                }
-                function toggleWalletMenu(ev) {
-                    ev.stopPropagation();
-                    document.getElementById('wallet-menu').classList.toggle('hidden');
-                }
-                document.addEventListener('click', () => {
-                    const menu = document.getElementById('wallet-menu');
-                    if (menu) menu.classList.add('hidden');
-                });
-
-                function pickWallet(key) {
-                    document.getElementById('wallet-menu').classList.add('hidden');
-                    // Already have this wallet? Open it so the balance can be updated instead of duplicated.
-                    const existing = key !== 'other' ? fData.wallets.find(w => w.key === key) : null;
-                    if (existing) { editWallet(existing.id); return; }
-                    const opt = WALLET_OPTIONS.find(o => o.key === key);
-                    walletEditId = null;
-                    walletPickKey = key;
-                    document.getElementById('wallet-modal-title').innerText = opt.name + ' — amount in wallet';
-                    document.getElementById('inp-wallet-name').classList.toggle('hidden', key !== 'other');
-                    document.getElementById('inp-wallet-name').value = '';
-                    document.getElementById('inp-wallet-amt').value = '';
-                    document.getElementById('btn-wallet-delete').classList.add('hidden');
-                    document.getElementById('modal-wallet').classList.remove('hidden');
-                    (key === 'other' ? document.getElementById('inp-wallet-name') : document.getElementById('inp-wallet-amt')).focus();
-                }
-
-                function editWallet(id) {
-                    const w = fData.wallets.find(x => x.id === id);
-                    if (!w) return;
-                    walletEditId = id;
-                    walletPickKey = w.key;
-                    document.getElementById('wallet-modal-title').innerText = w.name + ' — update amount';
-                    document.getElementById('inp-wallet-name').classList.toggle('hidden', w.key !== 'other');
-                    document.getElementById('inp-wallet-name').value = w.key === 'other' ? w.name : '';
-                    document.getElementById('inp-wallet-amt').value = w.amount;
-                    document.getElementById('btn-wallet-delete').classList.remove('hidden');
-                    document.getElementById('modal-wallet').classList.remove('hidden');
-                    document.getElementById('inp-wallet-amt').focus();
-                }
-
-                function closeWalletModal() {
-                    document.getElementById('modal-wallet').classList.add('hidden');
-                    walletEditId = null;
-                    walletPickKey = null;
-                }
-
-                function saveWallet() {
-                    const amt = parseFloat(document.getElementById('inp-wallet-amt').value);
-                    if (isNaN(amt) || amt < 0) { document.getElementById('inp-wallet-amt').focus(); return; }
-                    const opt = WALLET_OPTIONS.find(o => o.key === walletPickKey);
-                    if (!opt) return;
-
-                    let name = opt.name;
-                    if (walletPickKey === 'other') {
-                        name = document.getElementById('inp-wallet-name').value.trim();
-                        if (!name) { document.getElementById('inp-wallet-name').focus(); return; }
-                    }
-                    const rounded = Math.round(amt * 100) / 100;
-
-                    if (walletEditId) {
-                        const w = fData.wallets.find(x => x.id === walletEditId);
-                        if (w) { w.name = name; w.amount = rounded; w.updated = todayISO(); }
-                    } else {
-                        fData.wallets.push({ id: 'w_' + generateId(), key: walletPickKey, name: name, amount: rounded, updated: todayISO() });
-                    }
-                    closeWalletModal();
-                    saveState();
-                }
-
-                function deleteWallet() {
-                    if (!walletEditId) return;
-                    if (!confirm('Remove this wallet from the list?')) return;
-                    fData.wallets = fData.wallets.filter(w => w.id !== walletEditId);
-                    closeWalletModal();
-                    saveState();
-                }
-
-                function renderWallets() {
-                    const box = document.getElementById('wallet-box');
-                    if (!box) return;
-                    const wallets = fData.wallets || [];
-                    box.classList.toggle('hidden', !walletOpen);
-                    document.getElementById('wallet-caret').innerText = walletOpen ? '▲' : '▼';
-
-                    // option list (✓ = already added)
-                    document.getElementById('wallet-menu').innerHTML = WALLET_OPTIONS.map(o => {
-                        const has = o.key !== 'other' && wallets.some(w => w.key === o.key);
-                        return '<button onclick="pickWallet(\'' + o.key + '\')" class="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs font-semibold text-gray-100 hover:bg-gray-700 transition">' +
-                               '<span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:' + o.color + '"></span>' +
-                               '<span class="flex-1">' + o.name + '</span>' + (has ? '<span class="text-emerald-400">✓</span>' : '') + '</button>';
-                    }).join('');
-
-                    // wallet rows
-                    const list = document.getElementById('wallet-list');
-                    if (!wallets.length) {
-                        list.innerHTML = '<p class="text-[11px] text-gray-500 text-center py-4">No wallets yet.<br>Press “+ ADD A WALLET / BANK”.</p>';
-                    } else {
-                        list.innerHTML = wallets.map(w => {
-                            const opt = WALLET_OPTIONS.find(o => o.key === w.key) || WALLET_OPTIONS[WALLET_OPTIONS.length - 1];
-                            return '<div onclick="editWallet(\'' + w.id + '\')" title="Click to update the amount" class="flex items-center gap-2 border border-[#2a2a32] bg-[#1c1c21] hover:border-blue-400 px-2 py-1.5 cursor-pointer transition">' +
-                                   '<span class="w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-bold text-white" style="background:' + opt.color + '">' + walletEsc(w.name.charAt(0).toUpperCase()) + '</span>' +
-                                   '<div class="flex-1 min-w-0 leading-tight"><div class="text-[11px] font-bold text-gray-100 truncate">' + walletEsc(w.name) + '</div>' +
-                                   '<div class="text-[9px] text-gray-500">' + walletAsOf(w.updated) + '</div></div>' +
-                                   '<div class="text-xs font-bold text-gray-100">' + walletMoney(w.amount) + '</div></div>';
-                        }).join('');
-                    }
-                    document.getElementById('wallet-total').innerText = walletMoney(wallets.reduce((a, w) => a + w.amount, 0));
-                }
-
-                window.onresize = fitQuoteText;
+                window.addEventListener('DOMContentLoaded', renderUI);
+                window.addEventListener('resize', fitQuoteText);
             </script>
 
+        {% elif active_page == 'tasks' or active_page == 'task' or (page_title and 'task' in page_title|lower) %}
+            
+            <!-- TASKS TAB: 1000 TASKS GAME & FREE-PLACING SQUARE CANVAS -->
+            <div class="h-full flex flex-col bg-[#0f0f11] overflow-hidden select-none">
+                
+                <!-- TOP AVATAR, PROGRESS BAR & CLICKABLE TASK BAR -->
+                <header class="p-4 border-b border-[#26262b] bg-[#141417] flex flex-wrap items-center justify-between gap-4 shrink-0">
+                    <!-- Avatar + Level Progress -->
+                    <div class="flex items-center gap-4">
+                        <div id="game-avatar-container" class="thick-border bg-[#1c1c21] w-16 h-16 rounded-xl flex flex-col items-center justify-center shadow-lg shrink-0">
+                            <span id="game-avatar-emoji" class="text-3xl leading-none">🧒🏽</span>
+                            <span id="game-avatar-lvl-badge" class="text-[9px] font-black text-amber-400 uppercase mt-0.5">LVL 0</span>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-3">
+                                <h2 id="game-level-title" class="text-sm font-black uppercase text-amber-400 tracking-wider">Level 0: Dirt Poor Boy</h2>
+                                <span class="text-xs text-emerald-400 font-mono font-bold" id="game-hours-tracker">0 / 1000 Hours (0 Tasks)</span>
+                            </div>
+                            <div class="w-72 h-3.5 bg-[#1c1c21] border border-gray-600 rounded-full mt-1.5 overflow-hidden p-0.5">
+                                <div id="game-progress-bar" class="h-full bg-gradient-to-r from-amber-500 via-emerald-500 to-cyan-400 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                            <div class="text-[10px] text-gray-400 mt-1">1,000 Total Hours = Level 100 Superhero (10 Hours = 1 Level) • Double-click any task to Complete</div>
+                        </div>
+                    </div>
+
+                    <!-- Clickable Task Bar + Add Task Button -->
+                    <div class="flex items-center gap-2 flex-1 max-w-md">
+                        <input
+                            type="text"
+                            id="quick-task-bar-input"
+                            onclick="openTaskModal(this.value)"
+                            placeholder="Click here or '+ ADD TASK' to add a new task (up to 1000)..."
+                            class="flex-1 thick-border bg-[#1c1c21] hover:border-emerald-400 text-gray-100 px-3 py-2 text-xs cursor-pointer focus:outline-none"
+                            readonly
+                        >
+                        <button onclick="openTaskModal()" class="thick-border bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shrink-0 transition shadow">
+                            <span>+</span> ADD TASK
+                        </button>
+                    </div>
+                </header>
+
+                <!-- BLANK SQUARE CANVAS FOR DRAGGABLE NUMBERED RECTANGLE TASK BUTTONS -->
+                <div class="flex-1 p-4 overflow-auto flex items-center justify-center bg-[#0f0f11]">
+                    <div id="tasks-canvas" class="relative w-full h-full min-h-[600px] thick-border bg-[#141417] overflow-hidden shadow-2xl">
+                        <div class="absolute inset-0 pointer-events-none flex items-center justify-center opacity-5">
+                            <div class="text-center">
+                                <h1 class="text-6xl font-black text-gray-300 uppercase tracking-widest">1000 TASKS</h1>
+                                <p class="text-base text-gray-400 mt-2">Drag tasks anywhere • Double-click a task to mark COMPLETE</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODAL 1: ADD TASK (ASKS TASK NAME & HOURS REQUIRED) -->
+                <div id="modal-task-game" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                    <div class="bg-[#141417] thick-border p-6 w-full max-w-sm rounded shadow-2xl">
+                        <h3 class="font-black text-sm mb-4 uppercase text-emerald-400">Add Task (#<span id="next-task-num">1</span> of 1000)</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-[11px] font-bold text-gray-300 uppercase">Task Description</label>
+                                <input type="text" id="inp-game-task-name" placeholder="What task do you want to achieve?" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-100 mt-1 focus:outline-none focus:border-emerald-500">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-bold text-gray-300 uppercase">How Many Hours Required to Achieve?</label>
+                                <input type="number" step="0.5" min="0.5" id="inp-game-task-hours" placeholder="e.g. 10" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-100 mt-1 focus:outline-none focus:border-emerald-500">
+                                <p class="text-[10px] text-gray-400 mt-1">Point system: 10 hrs = +1 Level (1,000 hrs = Level 100)</p>
+                            </div>
+                        </div>
+                        <div class="flex justify-end gap-2 mt-5">
+                            <button onclick="closeTaskModal()" class="px-3 py-1.5 text-gray-400 hover:text-white text-xs font-bold">Cancel</button>
+                            <button onclick="saveGameTask()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded transition">Create Task</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODAL 2: DOUBLE-CLICK TO COMPLETE TASK -->
+                <div id="modal-task-complete" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                    <div class="bg-[#141417] thick-border p-6 w-full max-w-xs rounded shadow-2xl text-center">
+                        <div id="comp-task-badge" class="text-xs font-mono text-amber-400 uppercase font-bold mb-1">Task #1</div>
+                        <h3 id="comp-task-title" class="font-black text-base text-white mb-2 break-words"></h3>
+                        <p id="comp-task-info" class="text-xs text-gray-400 mb-5"></p>
+                        <div class="flex justify-center gap-2">
+                            <button onclick="closeCompleteModal()" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold rounded">Cancel</button>
+                            <button id="btn-confirm-complete" onclick="confirmCompleteTask()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase rounded shadow-lg transition">
+                                ✓ COMPLETE
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <script>
+                    let tGameData = JSON.parse(localStorage.getItem('tGameData')) || { tasks: [] };
+                    let activeCompleteTaskId = null;
+
+                    function saveTaskState() {
+                        localStorage.setItem('tGameData', JSON.stringify(tGameData));
+                        renderTaskGameUI();
+                    }
+
+                    function openTaskModal(prefill) {
+                        if (tGameData.tasks.length >= 1000) {
+                            alert("You have reached the maximum of 1,000 tasks!");
+                            return;
+                        }
+                        document.getElementById('next-task-num').innerText = tGameData.tasks.length + 1;
+                        document.getElementById('inp-game-task-name').value = prefill || '';
+                        document.getElementById('inp-game-task-hours').value = '';
+                        document.getElementById('modal-task-game').classList.remove('hidden');
+                        setTimeout(() => document.getElementById('inp-game-task-name').focus(), 50);
+                    }
+
+                    function closeTaskModal() {
+                        document.getElementById('modal-task-game').classList.add('hidden');
+                    }
+
+                    function saveGameTask() {
+                        const name = document.getElementById('inp-game-task-name').value.trim();
+                        const hours = parseFloat(document.getElementById('inp-game-task-hours').value);
+                        if (!name) {
+                            alert("Please enter a task name.");
+                            return;
+                        }
+                        if (isNaN(hours) || hours <= 0) {
+                            alert("Please enter how many hours are required (greater than 0).");
+                            return;
+                        }
+
+                        const levelGain = +(hours * 0.1).toFixed(2);
+                        const idx = tGameData.tasks.length;
+
+                        const newTask = {
+                            id: 'gtask_' + Math.random().toString(36).substr(2, 9),
+                            number: idx + 1,
+                            name: name,
+                            hours: hours,
+                            points: +(hours * 10).toFixed(1),
+                            levelGain: levelGain,
+                            done: false,
+                            x: 24 + (idx % 6) * 155,
+                            y: 24 + Math.floor(idx / 6) * 75
+                        };
+
+                        tGameData.tasks.push(newTask);
+                        closeTaskModal();
+                        saveTaskState();
+                    }
+
+                    function openCompleteModal(taskId) {
+                        const task = tGameData.tasks.find(t => t.id === taskId);
+                        if (!task) return;
+                        activeCompleteTaskId = taskId;
+                        document.getElementById('comp-task-badge').innerText = `TASK #${task.number}`;
+                        document.getElementById('comp-task-title').innerText = task.name;
+                        document.getElementById('comp-task-info').innerText = `${task.hours} Hours • +${task.levelGain} Levels (${task.points} pts)`;
+                        const btn = document.getElementById('btn-confirm-complete');
+                        btn.innerText = task.done ? '↺ MARK INCOMPLETE' : '✓ COMPLETE';
+                        btn.className = task.done
+                            ? 'px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs uppercase rounded shadow-lg transition'
+                            : 'px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase rounded shadow-lg transition';
+                        document.getElementById('modal-task-complete').classList.remove('hidden');
+                    }
+
+                    function closeCompleteModal() {
+                        activeCompleteTaskId = null;
+                        document.getElementById('modal-task-complete').classList.add('hidden');
+                    }
+
+                    function confirmCompleteTask() {
+                        if (!activeCompleteTaskId) return;
+                        const task = tGameData.tasks.find(t => t.id === activeCompleteTaskId);
+                        if (task) {
+                            task.done = !task.done;
+                            saveTaskState();
+                        }
+                        closeCompleteModal();
+                    }
+
+                    function deleteTask(id) {
+                        tGameData.tasks = tGameData.tasks.filter(t => t.id !== id);
+                        tGameData.tasks.forEach((t, idx) => t.number = idx + 1);
+                        saveTaskState();
+                    }
+
+                    function getAvatarInfo(level) {
+                        const lvl = Math.floor(level);
+                        if (lvl >= 100) return { icon: '🦸‍♂️✨', title: `Level 100: Supreme Superhero` };
+                        if (lvl >= 90)  return { icon: '🦸‍♂️', title: `Level ${lvl}: Cosmic Superhero` };
+                        if (lvl >= 80)  return { icon: '⚡🛡️', title: `Level ${lvl}: Masked Vigilante` };
+                        if (lvl >= 70)  return { icon: '🛡️⚔️', title: `Level ${lvl}: Golden Guardian` };
+                        if (lvl >= 60)  return { icon: '⚔️', title: `Level ${lvl}: Elite Knight` };
+                        if (lvl >= 50)  return { icon: '🥋', title: `Level ${lvl}: Martial Master` };
+                        if (lvl >= 40)  return { icon: '🏋️', title: `Level ${lvl}: Iron Athlete` };
+                        if (lvl >= 30)  return { icon: '🎓', title: `Level ${lvl}: Rising Scholar` };
+                        if (lvl >= 20)  return { icon: '⚒️', title: `Level ${lvl}: Skilled Craftsman` };
+                        if (lvl >= 10)  return { icon: '🧹', title: `Level ${lvl}: Street Hustler` };
+                        if (lvl >= 1)   return { icon: '👕', title: `Level ${lvl}: Scrappy Kid` };
+                        return { icon: '🧒🏽', title: `Level 0: Dirt Poor Boy` };
+                    }
+
+                    function renderTaskGameUI() {
+                        const canvas = document.getElementById('tasks-canvas');
+                        if (!canvas) return;
+
+                        canvas.querySelectorAll('.task-drag-btn').forEach(b => b.remove());
+
+                        let totalCompletedHours = 0;
+
+                        tGameData.tasks.forEach(t => {
+                            if (t.done) {
+                                totalCompletedHours += t.hours;
+                            }
+
+                            const btn = document.createElement('div');
+                            btn.className = `task-drag-btn absolute thick-border px-3 py-2 cursor-move shadow-lg flex flex-col justify-between min-w-[140px] max-w-[180px] select-none group ${
+                                t.done
+                                    ? 'bg-emerald-950/90 border-emerald-400 text-emerald-200'
+                                    : 'bg-[#1c1c21] hover:border-amber-400 text-gray-100'
+                            }`;
+                            btn.style.left = (t.x || 24) + 'px';
+                            btn.style.top = (t.y || 24) + 'px';
+
+                            btn.innerHTML = `
+                                <div class="flex items-center justify-between gap-1.5 border-b border-white/10 pb-1">
+                                    <span class="bg-black/60 text-amber-400 px-1.5 py-0.5 rounded text-[10px] font-mono font-black">#${t.number}</span>
+                                    <span class="text-[10px] font-bold ${t.done ? 'text-emerald-300' : 'text-gray-400'}">${t.hours}h (+${+(t.hours * 0.1).toFixed(1)} lvl)</span>
+                                </div>
+                                <div class="font-bold text-xs mt-1 truncate ${t.done ? 'line-through text-emerald-300' : 'text-white'}" title="${t.name}">${t.name}</div>
+                                <div class="text-[9px] uppercase tracking-wider mt-1 font-extrabold ${t.done ? 'text-emerald-400' : 'text-amber-400/80'}">
+                                    ${t.done ? '✓ COMPLETED' : 'Double-click to Complete'}
+                                </div>
+                                <button onclick="event.stopPropagation(); deleteTask('${t.id}')" class="absolute -top-2 -right-2 bg-red-600 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] opacity-0 group-hover:opacity-100 transition shadow" title="Delete Task">✕</button>
+                            `;
+
+                            btn.onmousedown = (e) => {
+                                if (e.target.tagName === 'BUTTON') return;
+                                const rect = canvas.getBoundingClientRect();
+                                const shiftX = e.clientX - btn.getBoundingClientRect().left;
+                                const shiftY = e.clientY - btn.getBoundingClientRect().top;
+                                btn.style.zIndex = 1000;
+
+                                function onMouseMove(ev) {
+                                    let newX = ev.clientX - rect.left - shiftX + canvas.scrollLeft;
+                                    let newY = ev.clientY - rect.top - shiftY + canvas.scrollTop;
+                                    newX = Math.max(4, Math.min(newX, canvas.clientWidth - btn.offsetWidth - 4));
+                                    newY = Math.max(4, Math.min(newY, canvas.clientHeight - btn.offsetHeight - 4));
+                                    btn.style.left = newX + 'px';
+                                    btn.style.top = newY + 'px';
+                                    t.x = Math.round(newX);
+                                    t.y = Math.round(newY);
+                                }
+
+                                function onMouseUp() {
+                                    document.removeEventListener('mousemove', onMouseMove);
+                                    document.removeEventListener('mouseup', onMouseUp);
+                                    btn.style.zIndex = 10;
+                                    localStorage.setItem('tGameData', JSON.stringify(tGameData));
+                                }
+
+                                document.addEventListener('mousemove', onMouseMove);
+                                document.addEventListener('mouseup', onMouseUp);
+                            };
+
+                            btn.ondblclick = (e) => {
+                                e.stopPropagation();
+                                openCompleteModal(t.id);
+                            };
+
+                            canvas.appendChild(btn);
+                        });
+
+                        const rawLevel = totalCompletedHours * 0.1;
+                        const currentLevel = Math.min(100, rawLevel);
+                        const progressPercent = Math.min(100, (totalCompletedHours / 1000) * 100);
+                        const avatarInfo = getAvatarInfo(currentLevel);
+
+                        document.getElementById('game-avatar-emoji').innerText = avatarInfo.icon;
+                        document.getElementById('game-avatar-lvl-badge').innerText = `LVL ${Math.floor(currentLevel)}`;
+                        document.getElementById('game-level-title').innerText = avatarInfo.title;
+                        document.getElementById('game-hours-tracker').innerText = `${totalCompletedHours} / 1000 Hours (${tGameData.tasks.length}/1000 Tasks)`;
+                        document.getElementById('game-progress-bar').style.width = `${progressPercent}%`;
+                    }
+
+                    window.addEventListener('DOMContentLoaded', renderTaskGameUI);
+                </script>
+            </div>
+
         {% else %}
+            <!-- DEFAULT BLANK CANVAS FOR OTHER TABS -->
             <div id="canvas" class="h-full overflow-y-auto p-8">
                 <h1 class="text-2xl font-bold text-gray-100 mb-2">{{ page_title }}</h1>
                 <p class="text-gray-500">Blank canvas ready for development...</p>

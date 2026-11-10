@@ -10,13 +10,57 @@
         #day-tabs::-webkit-scrollbar { height: 6px; }
         #day-tabs::-webkit-scrollbar-thumb { background: #3a3a44; border-radius: 3px; }
         input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #141417; }
+::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #60a5fa; }
     </style>
+
+
+<style>
+    /* Force vertical scrollbar on the 365 Days Challenge page */
+    html, body {
+        height: 100vh !important;
+        overflow: hidden !important;
+    }
+    main {
+        height: 100vh !important;
+        max-height: 100vh !important;
+        overflow-y: scroll !important;
+        overflow-x: hidden !important;
+        display: block !important;
+        padding-bottom: 100px !important;
+    }
+    main > div {
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+    }
+    /* High-visibility custom scrollbar */
+    main::-webkit-scrollbar {
+        width: 14px !important;
+        display: block !important;
+    }
+    main::-webkit-scrollbar-track {
+        background: #141417 !important;
+        border-left: 1px solid #26262b !important;
+    }
+    main::-webkit-scrollbar-thumb {
+        background: #3b82f6 !important;
+        border-radius: 7px !important;
+        border: 3px solid #141417 !important;
+    }
+    main::-webkit-scrollbar-thumb:hover {
+        background: #60a5fa !important;
+    }
+</style>
 </head>
 <body class="bg-[#0f0f11] text-gray-200 font-sans min-h-screen flex flex-col md:flex-row overflow-x-hidden md:overflow-hidden">
 
     {% include '_sidebar.html' %}
 
-    <main class="flex-1 bg-[#0f0f11] overflow-hidden">
+<main class="flex-1 bg-[#0f0f11] overflow-y-scroll p-6">
         <div class="h-full overflow-y-auto">
 
             <!-- HERO (like the profile banner in the reference picture) -->

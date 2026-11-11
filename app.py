@@ -2,7 +2,7 @@ import calendar
 import json
 import os
 from datetime import datetime, timedelta
-from flask import Flask, jsonify, redirect, render_template, request, url_for, flash
+from flask import Flask, Response, jsonify, redirect, render_template, request, url_for, flash, stream_with_context
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_bcrypt import Bcrypt
@@ -11,6 +11,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-change-this-in-production'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///scheduler.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
@@ -61,6 +62,21 @@ class UserStore(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     key = db.Column(db.String(40), nullable=False)
     data_json = db.Column(db.Text, nullable=False, default='{}')
+
+class DreamMedia(db.Model):
+    id = db.Column(db.String(48), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    kind = db.Column(db.String(10), nullable=False)
+    mime_type = db.Column(db.String(40), nullable=False)
+    size = db.Column(db.Integer, nullable=False)
+    complete = db.Column(db.Boolean, nullable=False, default=False)
+    chunks = db.relationship('DreamMediaChunk', backref='media', cascade='all, delete-orphan', order_by='DreamMediaChunk.part_index')
+
+class DreamMediaChunk(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    media_id = db.Column(db.String(48), db.ForeignKey('dream_media.id'), nullable=False, index=True)
+    part_index = db.Column(db.Integer, nullable=False)
+    data = db.Column(db.LargeBinary, nullable=False)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -371,7 +387,7 @@ def load_dreams():
             pass
     return {"dreams": []}
 
-def clean_dreams(payload):
+def clean_dreams(payload, user_id):
     dreams, seen = [], set()
     for dream in (payload.get("dreams") or [])[:500]:
         if not isinstance(dream, dict):
@@ -390,6 +406,12 @@ def clean_dreams(payload):
                 continue
             src = item.get("src", "")
             kind = "video" if item.get("kind") == "video" else "image"
+            media_id = str(item.get("mediaId", ""))[:48]
+            if media_id:
+                uploaded = DreamMedia.query.filter_by(id=media_id, user_id=user_id, complete=True).first()
+                if uploaded and uploaded.kind == kind and src == url_for("dream_media", media_id=media_id):
+                    safe_media.append({"kind": kind, "src": src, "mediaId": media_id})
+                continue
             allowed = ("data:video/mp4;base64,", "data:video/webm;base64,", "data:video/quicktime;base64,") if kind == "video" else ("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")
             max_size = 18_000_000 if kind == "video" else 1_400_000
             if isinstance(src, str) and len(src) <= max_size and src.startswith(allowed):
@@ -406,7 +428,8 @@ def api_dreams():
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return jsonify(ok=False, error="bad input"), 400
-    data_json = json.dumps(clean_dreams(payload))
+    cleaned = clean_dreams(payload, current_user.id)
+    data_json = json.dumps(cleaned)
     if len(data_json) > 30_000_000:
         return jsonify(ok=False, error="Dream media is too large. Try a shorter or smaller video."), 413
     row = UserStore.query.filter_by(user_id=current_user.id, key="dreams").first()
@@ -414,8 +437,104 @@ def api_dreams():
         row.data_json = data_json
     else:
         db.session.add(UserStore(user_id=current_user.id, key="dreams", data_json=data_json))
+    referenced = {m["mediaId"] for d in cleaned["dreams"] for m in d["media"] if m.get("mediaId")}
+    for uploaded in DreamMedia.query.filter_by(user_id=current_user.id).all():
+        if uploaded.id not in referenced:
+            db.session.delete(uploaded)
     db.session.commit()
     return jsonify(ok=True)
+
+DREAM_UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024
+DREAM_VIDEO_MAX_SIZE = 100 * 1024 * 1024
+DREAM_MEDIA_TYPES = {
+    "video/mp4": "video", "video/webm": "video", "video/quicktime": "video",
+    "image/jpeg": "image", "image/png": "image", "image/webp": "image",
+}
+
+@app.route("/api/dream-media/start", methods=["POST"])
+@login_required
+def dream_media_start():
+    payload = request.get_json(silent=True) or {}
+    mime_type = str(payload.get("mimeType", ""))
+    kind = DREAM_MEDIA_TYPES.get(mime_type)
+    try:
+        size = int(payload.get("size", 0))
+    except (TypeError, ValueError):
+        size = 0
+    max_size = DREAM_VIDEO_MAX_SIZE if kind == "video" else 20 * 1024 * 1024
+    if not kind or size < 1 or size > max_size:
+        return jsonify(ok=False, error="Video must be 100 MB or smaller, and use MP4, WebM, or MOV format."), 400
+    import secrets
+    media_id = secrets.token_urlsafe(24)
+    db.session.add(DreamMedia(id=media_id, user_id=current_user.id, kind=kind, mime_type=mime_type, size=size, complete=False))
+    db.session.commit()
+    return jsonify(ok=True, mediaId=media_id, chunkSize=DREAM_UPLOAD_CHUNK_SIZE)
+
+@app.route("/api/dream-media/<media_id>/chunk/<int:part_index>", methods=["POST"])
+@login_required
+def dream_media_chunk(media_id, part_index):
+    media = DreamMedia.query.filter_by(id=media_id, user_id=current_user.id, complete=False).first_or_404()
+    data = request.get_data(cache=False)
+    if not data or len(data) > DREAM_UPLOAD_CHUNK_SIZE:
+        return jsonify(ok=False, error="Invalid upload chunk."), 400
+    expected_index = DreamMediaChunk.query.filter_by(media_id=media_id).count()
+    if part_index != expected_index or expected_index * DREAM_UPLOAD_CHUNK_SIZE + len(data) > media.size:
+        return jsonify(ok=False, error="Upload chunk is out of order or too large."), 400
+    db.session.add(DreamMediaChunk(media_id=media_id, part_index=part_index, data=data))
+    db.session.commit()
+    return jsonify(ok=True, received=len(data))
+
+@app.route("/api/dream-media/<media_id>/finish", methods=["POST"])
+@login_required
+def dream_media_finish(media_id):
+    media = DreamMedia.query.filter_by(id=media_id, user_id=current_user.id, complete=False).first_or_404()
+    chunks = DreamMediaChunk.query.filter_by(media_id=media_id).order_by(DreamMediaChunk.part_index).all()
+    if sum(len(chunk.data) for chunk in chunks) != media.size or not chunks:
+        return jsonify(ok=False, error="The video upload is incomplete. Please try again."), 400
+    media.complete = True
+    db.session.commit()
+    return jsonify(ok=True, mediaId=media_id, src=url_for("dream_media", media_id=media_id))
+
+@app.route("/api/dream-media/<media_id>/abort", methods=["POST"])
+@login_required
+def dream_media_abort(media_id):
+    media = DreamMedia.query.filter_by(id=media_id, user_id=current_user.id, complete=False).first()
+    if media:
+        db.session.delete(media)
+        db.session.commit()
+    return jsonify(ok=True)
+
+@app.route("/api/dream-media/<media_id>")
+@login_required
+def dream_media(media_id):
+    media = DreamMedia.query.filter_by(id=media_id, user_id=current_user.id, complete=True).first_or_404()
+    range_header = request.headers.get("Range", "")
+    if range_header.startswith("bytes=") and "," not in range_header:
+        try:
+            start_text, end_text = range_header[6:].split("-", 1)
+            start = int(start_text) if start_text else max(0, media.size - int(end_text))
+            end = int(end_text) if end_text and start_text else media.size - 1
+            if start > end or start >= media.size:
+                return Response(status=416, headers={"Content-Range": f"bytes */{media.size}"})
+            end = min(end, media.size - 1)
+            status = 206
+        except ValueError:
+            start, end, status = 0, media.size - 1, 200
+    else:
+        start, end, status = 0, media.size - 1, 200
+    first_part, last_part = start // DREAM_UPLOAD_CHUNK_SIZE, end // DREAM_UPLOAD_CHUNK_SIZE
+    def stream_chunks():
+        for index in range(first_part, last_part + 1):
+            chunk = DreamMediaChunk.query.filter_by(media_id=media_id, part_index=index).first()
+            if not chunk:
+                continue
+            offset = index * DREAM_UPLOAD_CHUNK_SIZE
+            left, right = max(0, start - offset), min(len(chunk.data), end - offset + 1)
+            yield chunk.data[left:right]
+    headers = {"Accept-Ranges": "bytes", "Content-Length": str(end - start + 1), "Cache-Control": "private, max-age=3600"}
+    if status == 206:
+        headers["Content-Range"] = f"bytes {start}-{end}/{media.size}"
+    return Response(stream_with_context(stream_chunks()), status=status, mimetype=media.mime_type, headers=headers)
 
 # Spreadsheet-style Cash Flow page (reads the same finance data as the Finance tab)
 @app.route("/cashflow")

@@ -1060,7 +1060,7 @@
                     <textarea id="dream-quote" maxlength="500" rows="2" class="w-full bg-[#1c1c21] border border-[#35353d] rounded-lg p-3 text-sm text-white focus:outline-none focus:border-violet-500" placeholder="Add a quote that inspires you"></textarea>
                     <label for="dream-media" class="block text-xs font-bold uppercase text-gray-300 mt-4 mb-1">Photos or videos (up to 4)</label>
                     <input id="dream-media" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple class="block w-full text-xs text-gray-300 file:mr-3 file:rounded file:border-0 file:bg-[#292833] file:px-3 file:py-2 file:text-gray-100">
-                    <p class="text-[11px] text-gray-500 mt-1">Add up to four media items. Videos can be up to 12 MB each.</p>
+                    <p class="text-[11px] text-gray-500 mt-1">Add up to four media items and up to two videos. Videos can be up to 100 MB each.</p>
                     <div id="dream-media-preview" class="grid grid-cols-4 gap-2 mt-3"></div>
                     <p id="dream-error" class="hidden text-xs text-red-400 mt-3"></p>
                     <div class="flex justify-between items-center gap-3 mt-5">
@@ -1105,11 +1105,31 @@
                         image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This photo could not be opened.')); }; image.src = url;
                     });
                 }
+                async function uploadDreamVideo(file) {
+                    const start = await fetch('/api/dream-media/start', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mimeType:file.type, size:file.size})});
+                    const info = await start.json(); if (!start.ok) throw new Error(info.error || 'Could not start the upload.');
+                    const chunkSize = info.chunkSize;
+                    try {
+                        const total = Math.ceil(file.size / chunkSize);
+                        for (let part = 0; part < total; part++) {
+                            const response = await fetch('/api/dream-media/' + info.mediaId + '/chunk/' + part, {method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:file.slice(part * chunkSize, Math.min(file.size, (part + 1) * chunkSize))});
+                            if (!response.ok) { const data = await response.json(); throw new Error(data.error || 'Video upload failed.'); }
+                            document.getElementById('dream-error').textContent = 'Uploading video ' + Math.round((part + 1) / total * 100) + '%…';
+                            document.getElementById('dream-error').classList.remove('hidden');
+                        }
+                        const finish = await fetch('/api/dream-media/' + info.mediaId + '/finish', {method:'POST'}); const result = await finish.json();
+                        if (!finish.ok) throw new Error(result.error || 'The video upload did not finish.');
+                        return {kind:'video', mediaId:result.mediaId, src:result.src};
+                    } catch (err) {
+                        await fetch('/api/dream-media/' + info.mediaId + '/abort', {method:'POST'}).catch(() => {});
+                        throw err;
+                    }
+                }
                 document.getElementById('dream-media').addEventListener('change', async e => {
                     const files = Array.from(e.target.files || []); if (files.length + dreamMedia.length > 4) { showDreamError('Choose up to four photos or videos per dream.'); e.target.value = ''; return; }
                     if (files.filter(f => f.type.startsWith('video/')).length + dreamMedia.filter(m => m.kind === 'video').length > 2) { showDreamError('Add up to two videos per dream.'); e.target.value = ''; return; }
                     for (const file of files) { try {
-                        if (file.type.startsWith('video/')) { if (!['video/mp4','video/webm','video/quicktime'].includes(file.type) || file.size > 10_000_000) throw new Error('Use MP4, WebM, or MOV videos up to 10 MB.'); const src = await new Promise((resolve,reject) => { const r = new FileReader(); r.onload=()=>resolve(r.result); r.onerror=()=>reject(new Error('Video could not be read.')); r.readAsDataURL(file); }); dreamMedia.push({kind:'video',src}); }
+                        if (file.type.startsWith('video/')) { if (!['video/mp4','video/webm','video/quicktime'].includes(file.type) || file.size > 100 * 1024 * 1024) throw new Error('Use MP4, WebM, or MOV videos up to 100 MB.'); showDreamError('Preparing video upload…'); dreamMedia.push(await uploadDreamVideo(file)); }
                         else { if (!file.type.startsWith('image/') || file.size > 20_000_000) throw new Error('Choose an image smaller than 20 MB.'); dreamMedia.push({kind:'image',src:await compressDreamPhoto(file)}); }
                     } catch (err) { showDreamError(err.message); } }
                     renderDreamMediaPreview(); e.target.value = '';

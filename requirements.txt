@@ -3,3 +3,5 @@ Flask-SQLAlchemy
 Flask-Login
 Flask-Bcrypt
 gunicorn
+psycopg2-binary
+boto3

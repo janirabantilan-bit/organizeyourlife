@@ -30,7 +30,8 @@
                 ('goals',     'Goals',             '🎯', url_for('section', name='goals'), ''),
                 ('finance',   'Finance',           '💰', url_for('section', name='finance'), ''),
                 ('dreams',    'Dreams',            '✨', url_for('section', name='dreams'), ''),
-                ('challenge', '365 Day Challenge', '💪', url_for('challenge'), 'Physical Transformation')
+                ('challenge', '365 Day Challenge', '💪', url_for('challenge'), 'Physical Transformation'),
+                ('restore',   'Restore Backup',    '📥', url_for('restore_data'), 'Import saved data')
             ] %}
             {% for key, label, icon, href, sub in nav_items %}
             <a href="{{ href }}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition {% if active_page == key %}bg-blue-600 text-white font-medium shadow-sm{% else %}text-gray-400 hover:bg-[#1c1c21] hover:text-gray-200{% endif %}">

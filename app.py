@@ -9,9 +9,14 @@ from flask_bcrypt import Bcrypt
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-change-this-in-production'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///scheduler.db'
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///scheduler.db')
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024
+# Backup JSON files can contain embedded photos, so allow larger uploads while
+# keeping a firm cap on the total request size. Dream videos are stored separately.
+app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
@@ -288,6 +293,7 @@ def delete_schedule(id):
 @login_required
 def api_finance():
     fin = FinanceData.query.filter_by(user_id=current_user.id).first()
+    is_new = fin is None
     if not fin:
         fin = FinanceData(user_id=current_user.id)
         db.session.add(fin)
@@ -303,7 +309,13 @@ def api_finance():
         return jsonify(ok=False), 400
 
     import json
-    return jsonify(json.loads(fin.data_json))
+    data = json.loads(fin.data_json)
+    data['_is_empty'] = is_new or not any([
+        data.get('incomes'), data.get('tabs'), data.get('unassigned'), data.get('savings'),
+        data.get('quote'), data.get('beerMoney'),
+        any((wallet.get('amount', 0) or 0) for wallet in data.get('wallets', []) if isinstance(wallet, dict))
+    ])
+    return jsonify(data)
 
 SECTIONS = {"tasks": "Tasks", "goals": "Goals", "finance": "Finance", "dreams": "Dreams"}
 
@@ -314,7 +326,55 @@ def section(name):
         return render_template("goals.html", active_page="goals", initial=load_goals())
     if name == "dreams":
         return render_template("section.html", active_page=name, page_title=SECTIONS[name], initial=load_dreams())
+    if name == "tasks":
+        return render_template("section.html", active_page=name, page_title=SECTIONS[name])
     return render_template("section.html", active_page=name, page_title=SECTIONS[name])
+
+def clean_tasks(payload):
+    cleaned, seen = [], set()
+    for task in (payload.get("tasks") or [])[:1000]:
+        if not isinstance(task, dict):
+            continue
+        task_id = str(task.get("id", ""))[:40]
+        name = str(task.get("name", "")).strip()[:200]
+        try:
+            hours = float(task.get("hours", 0))
+            x = max(0, min(10000, int(task.get("x", 24))))
+            y = max(0, min(10000, int(task.get("y", 24))))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if not task_id or task_id in seen or not name or not 0 < hours <= 10000:
+            continue
+        seen.add(task_id)
+        number = len(cleaned) + 1
+        cleaned.append({
+            "id": task_id, "number": number, "name": name, "hours": hours,
+            "points": round(hours * 10, 1), "levelGain": round(hours * 0.1, 2),
+            "done": bool(task.get("done")), "x": x, "y": y,
+        })
+    return {"tasks": cleaned}
+
+@app.route("/api/tasks", methods=["GET", "POST"])
+@login_required
+def api_tasks():
+    row = UserStore.query.filter_by(user_id=current_user.id, key="tasks").first()
+    if request.method == "GET":
+        if row:
+            try:
+                return jsonify(json.loads(row.data_json))
+            except json.JSONDecodeError:
+                pass
+        return jsonify(tasks=[], is_new=True)
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify(ok=False, error="bad input"), 400
+    data_json = json.dumps(clean_tasks(payload))
+    if row:
+        row.data_json = data_json
+    else:
+        db.session.add(UserStore(user_id=current_user.id, key="tasks", data_json=data_json))
+    db.session.commit()
+    return jsonify(ok=True)
 
 # ---------------------------------------------------------------------------
 # GOALS (saved per user)
@@ -401,11 +461,16 @@ def clean_dreams(payload, user_id):
         if not dream_id or dream_id in seen or not description or not isinstance(media, list):
             continue
         safe_media = []
+        video_count = 0
         for item in media[:4]:
             if not isinstance(item, dict):
                 continue
             src = item.get("src", "")
             kind = "video" if item.get("kind") == "video" else "image"
+            if kind == "video":
+                video_count += 1
+                if video_count > 2:
+                    continue
             media_id = str(item.get("mediaId", ""))[:48]
             if media_id:
                 uploaded = DreamMedia.query.filter_by(id=media_id, user_id=user_id, complete=True).first()
@@ -440,16 +505,46 @@ def api_dreams():
     referenced = {m["mediaId"] for d in cleaned["dreams"] for m in d["media"] if m.get("mediaId")}
     for uploaded in DreamMedia.query.filter_by(user_id=current_user.id).all():
         if uploaded.id not in referenced:
+            upload_id = get_multipart_upload_id(uploaded.id)
+            client = r2_client()
+            if upload_id and client:
+                if uploaded.complete:
+                    client.delete_object(Bucket=r2_bucket_name(), Key=dream_media_key(uploaded))
+                else:
+                    client.abort_multipart_upload(Bucket=r2_bucket_name(), Key=dream_media_key(uploaded), UploadId=upload_id)
             db.session.delete(uploaded)
     db.session.commit()
     return jsonify(ok=True)
 
-DREAM_UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024
+DREAM_UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024
 DREAM_VIDEO_MAX_SIZE = 100 * 1024 * 1024
 DREAM_MEDIA_TYPES = {
     "video/mp4": "video", "video/webm": "video", "video/quicktime": "video",
     "image/jpeg": "image", "image/png": "image", "image/webp": "image",
 }
+
+def r2_client():
+    required = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME")
+    if not all(os.environ.get(name) for name in required):
+        return None
+    import boto3
+    return boto3.client(
+        "s3",
+        endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        region_name="auto",
+    )
+
+def dream_media_key(media):
+    return f"dreams/{media.user_id}/{media.id}"
+
+def get_multipart_upload_id(media_id):
+    marker = DreamMediaChunk.query.filter_by(media_id=media_id, part_index=-1).first()
+    return marker.data.decode("utf-8") if marker else None
+
+def r2_bucket_name():
+    return os.environ.get("R2_BUCKET_NAME", "")
 
 @app.route("/api/dream-media/start", methods=["POST"])
 @login_required
@@ -464,9 +559,16 @@ def dream_media_start():
     max_size = DREAM_VIDEO_MAX_SIZE if kind == "video" else 20 * 1024 * 1024
     if not kind or size < 1 or size > max_size:
         return jsonify(ok=False, error="Video must be 100 MB or smaller, and use MP4, WebM, or MOV format."), 400
+    client = r2_client()
+    if not client:
+        return jsonify(ok=False, error="Video storage is not configured yet. Add the four R2 settings in Render first."), 503
     import secrets
     media_id = secrets.token_urlsafe(24)
-    db.session.add(DreamMedia(id=media_id, user_id=current_user.id, kind=kind, mime_type=mime_type, size=size, complete=False))
+    media = DreamMedia(id=media_id, user_id=current_user.id, kind=kind, mime_type=mime_type, size=size, complete=False)
+    upload = client.create_multipart_upload(Bucket=r2_bucket_name(), Key=dream_media_key(media), ContentType=mime_type)
+    db.session.add(media)
+    db.session.commit()
+    db.session.add(DreamMediaChunk(media_id=media_id, part_index=-1, data=upload["UploadId"].encode("utf-8")))
     db.session.commit()
     return jsonify(ok=True, mediaId=media_id, chunkSize=DREAM_UPLOAD_CHUNK_SIZE)
 
@@ -477,10 +579,18 @@ def dream_media_chunk(media_id, part_index):
     data = request.get_data(cache=False)
     if not data or len(data) > DREAM_UPLOAD_CHUNK_SIZE:
         return jsonify(ok=False, error="Invalid upload chunk."), 400
-    expected_index = DreamMediaChunk.query.filter_by(media_id=media_id).count()
+    upload_id = get_multipart_upload_id(media_id)
+    if not upload_id:
+        return jsonify(ok=False, error="This video upload is no longer available. Start it again."), 400
+    expected_index = DreamMediaChunk.query.filter(DreamMediaChunk.media_id == media_id, DreamMediaChunk.part_index >= 0).count()
     if part_index != expected_index or expected_index * DREAM_UPLOAD_CHUNK_SIZE + len(data) > media.size:
         return jsonify(ok=False, error="Upload chunk is out of order or too large."), 400
-    db.session.add(DreamMediaChunk(media_id=media_id, part_index=part_index, data=data))
+    expected_length = min(DREAM_UPLOAD_CHUNK_SIZE, media.size - expected_index * DREAM_UPLOAD_CHUNK_SIZE)
+    if len(data) != expected_length:
+        return jsonify(ok=False, error="The video chunk size is invalid."), 400
+    result = r2_client().upload_part(Bucket=r2_bucket_name(), Key=dream_media_key(media), UploadId=upload_id, PartNumber=part_index + 1, Body=data)
+    part_data = json.dumps({"etag": result["ETag"], "size": len(data)}).encode("utf-8")
+    db.session.add(DreamMediaChunk(media_id=media_id, part_index=part_index, data=part_data))
     db.session.commit()
     return jsonify(ok=True, received=len(data))
 
@@ -488,9 +598,18 @@ def dream_media_chunk(media_id, part_index):
 @login_required
 def dream_media_finish(media_id):
     media = DreamMedia.query.filter_by(id=media_id, user_id=current_user.id, complete=False).first_or_404()
-    chunks = DreamMediaChunk.query.filter_by(media_id=media_id).order_by(DreamMediaChunk.part_index).all()
-    if sum(len(chunk.data) for chunk in chunks) != media.size or not chunks:
+    upload_id = get_multipart_upload_id(media_id)
+    chunks = DreamMediaChunk.query.filter(DreamMediaChunk.media_id == media_id, DreamMediaChunk.part_index >= 0).order_by(DreamMediaChunk.part_index).all()
+    parts = [json.loads(chunk.data.decode("utf-8")) for chunk in chunks]
+    if sum(part["size"] for part in parts) != media.size or not parts or not upload_id:
         return jsonify(ok=False, error="The video upload is incomplete. Please try again."), 400
+    client = r2_client()
+    client.complete_multipart_upload(
+        Bucket=r2_bucket_name(), Key=dream_media_key(media), UploadId=upload_id,
+        MultipartUpload={"Parts": [{"ETag": part["etag"], "PartNumber": index + 1} for index, part in enumerate(parts)]},
+    )
+    for chunk in chunks:
+        db.session.delete(chunk)
     media.complete = True
     db.session.commit()
     return jsonify(ok=True, mediaId=media_id, src=url_for("dream_media", media_id=media_id))
@@ -500,6 +619,10 @@ def dream_media_finish(media_id):
 def dream_media_abort(media_id):
     media = DreamMedia.query.filter_by(id=media_id, user_id=current_user.id, complete=False).first()
     if media:
+        upload_id = get_multipart_upload_id(media_id)
+        client = r2_client()
+        if upload_id and client:
+            client.abort_multipart_upload(Bucket=r2_bucket_name(), Key=dream_media_key(media), UploadId=upload_id)
         db.session.delete(media)
         db.session.commit()
     return jsonify(ok=True)
@@ -508,6 +631,14 @@ def dream_media_abort(media_id):
 @login_required
 def dream_media(media_id):
     media = DreamMedia.query.filter_by(id=media_id, user_id=current_user.id, complete=True).first_or_404()
+    if get_multipart_upload_id(media_id):
+        client = r2_client()
+        if not client:
+            return jsonify(ok=False, error="Video storage is not configured."), 503
+        signed_url = client.generate_presigned_url(
+            "get_object", Params={"Bucket": r2_bucket_name(), "Key": dream_media_key(media)}, ExpiresIn=3600
+        )
+        return redirect(signed_url, code=302)
     range_header = request.headers.get("Range", "")
     if range_header.startswith("bytes=") and "," not in range_header:
         try:
@@ -596,20 +727,38 @@ def build_challenge_targets():
     return targets
 
 def load_challenge_data():
-    try:
-        with open(CHALLENGE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    row = UserStore.query.filter_by(user_id=current_user.id, key="challenge").first()
+    if row:
+        try:
+            data = json.loads(row.data_json)
+        except json.JSONDecodeError:
+            data = {}
+        data.setdefault("logs", {})
+        data.setdefault("paused", {})
+        return data
+
+    # Read the old shared JSON file as a compatibility fallback. New saves go
+    # into the signed-in user's database record so they persist across devices.
+    if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:"):
+        try:
+            with open(CHALLENGE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            data = {}
+    else:
         data = {}
     data.setdefault("logs", {})
     data.setdefault("paused", {})
     return data
 
 def save_challenge_data(data):
-    tmp = CHALLENGE_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f)
-    os.replace(tmp, CHALLENGE_FILE)
+    row = UserStore.query.filter_by(user_id=current_user.id, key="challenge").first()
+    data_json = json.dumps({"logs": data.get("logs", {}), "paused": data.get("paused", {})})
+    if row:
+        row.data_json = data_json
+    else:
+        db.session.add(UserStore(user_id=current_user.id, key="challenge", data_json=data_json))
+    db.session.commit()
 
 @app.route("/challenge")
 @login_required
@@ -662,6 +811,214 @@ def challenge_pause():
         data["paused"].pop(str(day), None)
     save_challenge_data(data)
     return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------------------
+# RESTORE DATA FROM THE TWO BROWSER-DOWNLOADED BACKUP FILES
+# ---------------------------------------------------------------------------
+RESTORE_MARKER_KEY = "restore_backup_v1"
+RESTORE_MAX_FILE_SIZE = 30 * 1024 * 1024
+
+def parse_restore_upload(upload, label):
+    if not upload or not upload.filename:
+        raise ValueError(f"Choose the {label} JSON backup file.")
+    raw = upload.stream.read(RESTORE_MAX_FILE_SIZE + 1)
+    if len(raw) > RESTORE_MAX_FILE_SIZE:
+        raise ValueError(f"The {label} backup is larger than 30 MB.")
+    try:
+        value = json.loads(raw.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ValueError(f"The {label} file is not valid JSON.")
+    if not isinstance(value, dict):
+        raise ValueError(f"The {label} backup has an unexpected format.")
+    return value
+
+def save_user_store(user_id, key, value):
+    row = UserStore.query.filter_by(user_id=user_id, key=key).first()
+    data_json = json.dumps(value)
+    if row:
+        row.data_json = data_json
+    else:
+        db.session.add(UserStore(user_id=user_id, key=key, data_json=data_json))
+
+def restore_finance_is_empty(data):
+    if not isinstance(data, dict):
+        return True
+    return not any([
+        data.get("incomes"), data.get("tabs"), data.get("unassigned"),
+        data.get("savings"), data.get("quote"), data.get("beerMoney"),
+        any((wallet.get("amount", 0) or 0) for wallet in data.get("wallets", []) if isinstance(wallet, dict)),
+    ])
+
+def restore_account_is_empty(user_id):
+    if Schedule.query.filter_by(user_id=user_id).first():
+        return False
+    finance = FinanceData.query.filter_by(user_id=user_id).first()
+    if finance:
+        try:
+            if not restore_finance_is_empty(json.loads(finance.data_json or "{}")):
+                return False
+        except json.JSONDecodeError:
+            return False
+    for row in UserStore.query.filter_by(user_id=user_id).all():
+        if row.key == RESTORE_MARKER_KEY:
+            return False
+        try:
+            data = json.loads(row.data_json)
+        except json.JSONDecodeError:
+            return False
+        if row.key == "tasks" and data.get("tasks"):
+            return False
+        if row.key == "goals" and data.get("goals"):
+            return False
+        if row.key == "dreams" and data.get("dreams"):
+            return False
+        if row.key == "challenge" and (data.get("logs") or data.get("paused")):
+            return False
+    return not DreamMedia.query.filter_by(user_id=user_id).first()
+
+def clean_restore_schedules(payload):
+    if not isinstance(payload, list) or len(payload) > 10000:
+        raise ValueError("The calendar backup is missing or contains too many items.")
+    cleaned = []
+    valid_recurrences = {"none", "daily", "week", "month", "tue-sat", "weekends"}
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        date = str(item.get("date", ""))[:10]
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            continue
+        title = str(item.get("title", "")).strip()[:200]
+        start_time = str(item.get("start_time", ""))[:5]
+        end_time = str(item.get("end_time", ""))[:5]
+        try:
+            datetime.strptime(start_time, "%H:%M")
+            datetime.strptime(end_time, "%H:%M")
+        except ValueError:
+            continue
+        recurrence = str(item.get("recurrence", "none"))
+        if not title or recurrence not in valid_recurrences:
+            continue
+        try:
+            series_id = int(item["series_id"]) if item.get("series_id") is not None else None
+        except (TypeError, ValueError, OverflowError):
+            series_id = None
+        cleaned.append({
+            "series_id": series_id,
+            "date": date,
+            "title": title,
+            "start_time": start_time,
+            "end_time": end_time,
+            "done": bool(item.get("done")),
+            "recurrence": recurrence,
+        })
+    return cleaned
+
+@app.route("/restore-data", methods=["GET", "POST"])
+@login_required
+def restore_data():
+    result = None
+    error = None
+    if request.method == "POST":
+        try:
+            if request.form.get("confirm_restore") != "yes":
+                raise ValueError("Check the confirmation box before importing the backups.")
+            browser_backup = parse_restore_upload(request.files.get("browser_backup"), "browser")
+            server_backup = parse_restore_upload(request.files.get("server_backup"), "server")
+            local_storage = browser_backup.get("localStorage")
+            if not isinstance(local_storage, dict):
+                raise ValueError("The browser backup does not contain the expected localStorage data.")
+            if not isinstance(server_backup.get("calendar"), list):
+                raise ValueError("The server backup is missing its calendar list.")
+            goals = server_backup.get("goals", [])
+            dreams = server_backup.get("dreams", [])
+            challenge = server_backup.get("challenge", {})
+            if not isinstance(goals, list) or not isinstance(dreams, list) or not isinstance(challenge, dict):
+                raise ValueError("The server backup contains data in an unexpected format.")
+
+            if not restore_account_is_empty(current_user.id):
+                raise ValueError("This account already has saved information. To prevent overwriting or duplicating it, restore only works on an empty account.")
+
+            finance = None
+            if isinstance(local_storage.get("fData"), str):
+                try:
+                    finance = json.loads(local_storage["fData"])
+                except json.JSONDecodeError:
+                    raise ValueError("The browser backup's Finance data is invalid JSON.")
+                if not isinstance(finance, dict):
+                    raise ValueError("The browser backup's Finance data is not in the expected format.")
+            else:
+                raise ValueError("The browser backup does not contain Finance data (fData). Nothing was imported.")
+
+            task_data = None
+            if isinstance(local_storage.get("tGameData"), str):
+                try:
+                    task_data = json.loads(local_storage["tGameData"])
+                except json.JSONDecodeError:
+                    raise ValueError("The browser backup's Tasks data is invalid JSON.")
+                if not isinstance(task_data, dict):
+                    raise ValueError("The browser backup's Tasks data is not in the expected format.")
+            else:
+                raise ValueError("The browser backup does not contain Tasks data (tGameData). Nothing was imported.")
+
+            schedules = clean_restore_schedules(server_backup["calendar"])
+            cleaned_goals = clean_goals({"goals": goals})
+            cleaned_dreams = clean_dreams({"dreams": dreams}, current_user.id)
+            if len(schedules) != len(server_backup["calendar"]):
+                raise ValueError("Some calendar entries could not be read safely. Nothing was imported.")
+            if len(cleaned_goals["goals"]) != len(goals):
+                raise ValueError("Some goals could not be read safely. Nothing was imported.")
+            if len(cleaned_dreams["dreams"]) != len(dreams):
+                raise ValueError("Some dreams could not be read safely. Nothing was imported.")
+            original_media_count = sum(
+                len(dream.get("media") if isinstance(dream.get("media"), list) else (dream.get("photos") or []))
+                for dream in dreams if isinstance(dream, dict)
+            )
+            restored_media_count = sum(len(dream.get("media", [])) for dream in cleaned_dreams["dreams"])
+            skipped_media_count = max(0, original_media_count - restored_media_count)
+            cleaned_challenge = {
+                "logs": challenge.get("logs") if isinstance(challenge.get("logs"), dict) else {},
+                "paused": challenge.get("paused") if isinstance(challenge.get("paused"), dict) else {},
+            }
+            cleaned_tasks = clean_tasks(task_data) if task_data is not None else None
+            if len(cleaned_tasks["tasks"]) != len(task_data.get("tasks", [])):
+                raise ValueError("Some tasks could not be read safely. Nothing was imported.")
+
+            for item in schedules:
+                db.session.add(Schedule(user_id=current_user.id, **item))
+            if finance is not None:
+                row = FinanceData.query.filter_by(user_id=current_user.id).first()
+                if row:
+                    row.data_json = json.dumps(finance)
+                else:
+                    db.session.add(FinanceData(user_id=current_user.id, data_json=json.dumps(finance)))
+            if cleaned_tasks is not None:
+                save_user_store(current_user.id, "tasks", cleaned_tasks)
+            save_user_store(current_user.id, "goals", cleaned_goals)
+            save_user_store(current_user.id, "dreams", cleaned_dreams)
+            save_user_store(current_user.id, "challenge", cleaned_challenge)
+            counts = {
+                "calendar": len(schedules),
+                "finance": "imported" if finance is not None else "not found in browser backup",
+                "tasks": len(cleaned_tasks["tasks"]) if cleaned_tasks is not None else "not found in browser backup",
+                "goals": len(cleaned_goals["goals"]),
+                "dreams": len(cleaned_dreams["dreams"]),
+                "challenge_logs": sum(len(days) for days in cleaned_challenge["logs"].values() if isinstance(days, dict)),
+                "dream_media_skipped": skipped_media_count,
+            }
+            save_user_store(current_user.id, RESTORE_MARKER_KEY, {"imported_at": datetime.utcnow().isoformat() + "Z", "counts": counts})
+            db.session.commit()
+            result = counts
+        except ValueError as exc:
+            db.session.rollback()
+            error = str(exc)
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("Backup restore failed")
+            error = "The restore could not be completed. No changes were saved. Check the files and try again, or share this message with support: restore failed."
+    return render_template("restore.html", active_page="restore", result=result, error=error)
 
 if __name__ == '__main__':
     with app.app_context():

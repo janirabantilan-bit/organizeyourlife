@@ -69,6 +69,7 @@
                     <button id="btn-beer-money" onclick="toggleBeerMoneyPage()" class="thick-border bg-[#1c1c21] hover:bg-amber-600 hover:text-white text-amber-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5">
                         🍺 BEER MONEY
                     </button>
+                    <span id="finance-sync-status" class="text-[10px] text-gray-500" aria-live="polite">Syncing…</span>
                 </div>
             </header>
 
@@ -298,6 +299,7 @@
                     wallets: DEFAULT_WALLETS,
                     beerMoney: []
                 };
+                let financeLoaded = false, financeSaveTimer = null;
                 if (!fData.beerMoney) fData.beerMoney = [];
                 if (!fData.wallets || !Array.isArray(fData.wallets) || fData.wallets.length === 0) {
                     fData.wallets = JSON.parse(JSON.stringify(DEFAULT_WALLETS));
@@ -309,6 +311,47 @@
                 function saveState() {
                     localStorage.setItem('fData', JSON.stringify(fData));
                     renderUI();
+                    if (!financeLoaded) return;
+                    const status = document.getElementById('finance-sync-status');
+                    status.textContent = 'Saving…';
+                    clearTimeout(financeSaveTimer);
+                    financeSaveTimer = setTimeout(async () => {
+                        try {
+                            const response = await fetch('/api/finance', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(fData)});
+                            if (!response.ok) throw new Error('save failed');
+                            status.textContent = 'Synced ✓';
+                        } catch (error) { status.textContent = 'Sync failed'; }
+                    }, 350);
+                }
+
+                function financeHasContent(data) {
+                    return !!(data.incomes?.length || Object.keys(data.tabs || {}).length || data.unassigned?.length || data.savings?.length || data.quote || data.beerMoney?.length || (data.wallets || []).some(w => Number(w.amount) !== 0));
+                }
+                async function initializeFinanceSync() {
+                    const status = document.getElementById('finance-sync-status');
+                    try {
+                        const response = await fetch('/api/finance');
+                        if (!response.ok) throw new Error('load failed');
+                        const remote = await response.json();
+                        const remoteIsEmpty = !!remote._is_empty; delete remote._is_empty;
+                        if (remoteIsEmpty && financeHasContent(fData)) {
+                            const importResponse = await fetch('/api/finance', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(fData)});
+                            if (!importResponse.ok) throw new Error('import failed');
+                            status.textContent = 'Synced from this device ✓';
+                        } else {
+                            fData = {...fData, ...remote};
+                            if (!fData.beerMoney) fData.beerMoney = [];
+                            if (!fData.wallets || !fData.wallets.length) fData.wallets = JSON.parse(JSON.stringify(DEFAULT_WALLETS));
+                            status.textContent = 'Synced ✓';
+                        }
+                        localStorage.setItem('fData', JSON.stringify(fData));
+                        financeLoaded = true;
+                        renderUI();
+                    } catch (error) {
+                        financeLoaded = true;
+                        status.textContent = 'Server sync unavailable';
+                        renderUI();
+                    }
                 }
 
                 function generateId() { return Math.random().toString(36).substr(2, 9); }
@@ -739,7 +782,7 @@
                     saveState();
                 }
 
-                window.addEventListener('DOMContentLoaded', renderUI);
+                window.addEventListener('DOMContentLoaded', initializeFinanceSync);
                 window.addEventListener('resize', fitQuoteText);
             </script>
 
@@ -760,6 +803,7 @@
                             <div class="flex items-center gap-3">
                                 <h2 id="game-level-title" class="text-sm font-black uppercase text-amber-400 tracking-wider">Level 0: Dirt Poor Boy</h2>
                                 <span class="text-xs text-emerald-400 font-mono font-bold" id="game-hours-tracker">0 / 1000 Hours (0 Tasks)</span>
+                                <span id="tasks-sync-status" class="text-[10px] text-gray-500" aria-live="polite">Syncing…</span>
                             </div>
                             <div class="w-72 h-3.5 bg-[#1c1c21] border border-gray-600 rounded-full mt-1.5 overflow-hidden p-0.5">
                                 <div id="game-progress-bar" class="h-full bg-gradient-to-r from-amber-500 via-emerald-500 to-cyan-400 rounded-full transition-all duration-300" style="width: 0%"></div>
@@ -836,10 +880,46 @@
                 <script>
                     let tGameData = JSON.parse(localStorage.getItem('tGameData')) || { tasks: [] };
                     let activeCompleteTaskId = null;
+                    let tasksSyncLoaded = false, tasksSaveTimer = null;
 
                     function saveTaskState() {
                         localStorage.setItem('tGameData', JSON.stringify(tGameData));
                         renderTaskGameUI();
+                        if (!tasksSyncLoaded) return;
+                        const status = document.getElementById('tasks-sync-status');
+                        status.textContent = 'Saving…';
+                        clearTimeout(tasksSaveTimer);
+                        tasksSaveTimer = setTimeout(async () => {
+                            try {
+                                const response = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(tGameData)});
+                                if (!response.ok) throw new Error('save failed');
+                                status.textContent = 'Synced ✓';
+                            } catch (error) { status.textContent = 'Sync failed'; }
+                        }, 350);
+                    }
+
+                    async function initializeTaskSync() {
+                        const status = document.getElementById('tasks-sync-status');
+                        try {
+                            const response = await fetch('/api/tasks');
+                            if (!response.ok) throw new Error('load failed');
+                            const remote = await response.json();
+                            if (remote.is_new && tGameData.tasks.length) {
+                                const imported = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(tGameData)});
+                                if (!imported.ok) throw new Error('import failed');
+                                status.textContent = 'Synced from this device ✓';
+                            } else {
+                                tGameData = {tasks: Array.isArray(remote.tasks) ? remote.tasks : []};
+                                localStorage.setItem('tGameData', JSON.stringify(tGameData));
+                                status.textContent = 'Synced ✓';
+                            }
+                            tasksSyncLoaded = true;
+                            renderTaskGameUI();
+                        } catch (error) {
+                            tasksSyncLoaded = true;
+                            status.textContent = 'Server sync unavailable';
+                            renderTaskGameUI();
+                        }
                     }
 
                     function openTaskModal(prefill) {
@@ -1000,7 +1080,7 @@
                                     document.removeEventListener('mousemove', onMouseMove);
                                     document.removeEventListener('mouseup', onMouseUp);
                                     btn.style.zIndex = 10;
-                                    localStorage.setItem('tGameData', JSON.stringify(tGameData));
+                                    saveTaskState();
                                 }
 
                                 document.addEventListener('mousemove', onMouseMove);
@@ -1034,7 +1114,7 @@
                         document.getElementById('game-progress-bar').style.width = `${progressPercent}%`;
                     }
 
-                    window.addEventListener('DOMContentLoaded', renderTaskGameUI);
+                    window.addEventListener('DOMContentLoaded', initializeTaskSync);
                 </script>
             </div>
 

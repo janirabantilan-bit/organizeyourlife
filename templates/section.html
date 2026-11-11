@@ -11,13 +11,26 @@
         .thick-border { border: 2px solid #6b7280; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @media (max-width: 767px) {
+            body { height: 100dvh; min-height: 0; }
+            body > main { height: calc(100dvh - 49px); }
+            #finance-view-board > div:first-child { flex-direction: column; overflow-y: auto; }
+            #finance-view-board > div:first-child > .relative { width: 100%; min-height: 220px; flex: 0 0 auto; }
+            #finance-view-board > div:first-child > div:last-child { width: 100%; min-height: 120px; }
+            #finance-view-board > div:last-child { min-height: 105px; padding: .65rem; }
+            #finance-view-board > div:last-child #zone-unassigned { max-height: 120px; overflow-y: auto; }
+            #game-level-title { max-width: 55vw; overflow-wrap: anywhere; }
+            #game-hours-tracker { font-size: 9px; }
+            #tasks-canvas { min-height: 500px; }
+            #dream-grid > button { min-height: 0; }
+        }
     </style>
 </head>
-<body class="bg-[#0f0f11] text-gray-200 font-sans h-screen flex overflow-hidden">
+<body class="bg-[#0f0f11] text-gray-200 font-sans min-h-screen md:h-screen flex flex-col md:flex-row overflow-hidden">
 
     {% include '_sidebar.html' %}
 
-    <main class="flex-1 bg-[#0f0f11] overflow-hidden flex flex-col">
+    <main class="flex-1 min-w-0 min-h-0 bg-[#0f0f11] overflow-hidden flex flex-col">
         {% if active_page == 'finance' or (page_title and page_title|lower == 'finance') %}
             
             <!-- TOP BAR: ADD INCOME, QUOTE SLOT, AND 3 BUTTONS (CASH FLOW, MONEY ON WALLET, BEER MONEY) -->
@@ -947,8 +960,10 @@
                                     ? 'bg-emerald-950/90 border-emerald-400 text-emerald-200'
                                     : 'bg-[#1c1c21] hover:border-amber-400 text-gray-100'
                             }`;
-                            btn.style.left = (t.x || 24) + 'px';
-                            btn.style.top = (t.y || 24) + 'px';
+                            const mobileLayout = window.matchMedia('(max-width: 767px)').matches;
+                            const mobileCols = Math.max(1, Math.floor((canvas.clientWidth - 24) / 160));
+                            btn.style.left = mobileLayout ? (12 + (t.number - 1) % mobileCols * 155) + 'px' : (t.x || 24) + 'px';
+                            btn.style.top = mobileLayout ? (12 + Math.floor((t.number - 1) / mobileCols) * 82) + 'px' : (t.y || 24) + 'px';
 
                             btn.innerHTML = `
                                 <div class="flex items-center justify-between gap-1.5 border-b border-white/10 pb-1">
@@ -999,6 +1014,13 @@
                             canvas.appendChild(btn);
                         });
 
+                        if (window.matchMedia('(max-width: 767px)').matches) {
+                            const cols = Math.max(1, Math.floor((canvas.clientWidth - 24) / 160));
+                            canvas.style.minHeight = Math.max(500, Math.ceil(tGameData.tasks.length / cols) * 82 + 36) + 'px';
+                        } else {
+                            canvas.style.minHeight = '600px';
+                        }
+
                         const rawLevel = totalCompletedHours * 0.1;
                         const currentLevel = Math.min(100, rawLevel);
                         const progressPercent = Math.min(100, (totalCompletedHours / 1000) * 100);
@@ -1014,6 +1036,93 @@
                     window.addEventListener('DOMContentLoaded', renderTaskGameUI);
                 </script>
             </div>
+
+        {% elif active_page == 'dreams' %}
+            <section class="flex-1 min-h-0 flex flex-col overflow-hidden">
+                <header class="shrink-0 px-4 md:px-7 py-4 border-b border-[#26262b] bg-[#141417] flex items-center justify-between gap-3">
+                    <div class="min-w-0"><h1 class="text-xl font-black text-white">✨ Dreams</h1><p class="text-xs text-gray-400 mt-1">Keep the things you’re working toward close.</p></div>
+                    <span id="dream-save-status" class="text-[11px] text-gray-500 shrink-0"></span>
+                </header>
+                <div class="flex-1 min-h-0 flex items-center gap-2 md:gap-4 p-3 md:p-6">
+                    <button type="button" onclick="changeDreamPage(-1)" aria-label="Previous dreams" class="shrink-0 w-9 h-9 md:w-11 md:h-11 rounded-full bg-[#1c1c21] border border-[#3a3a44] text-white hover:bg-violet-700">◀</button>
+                    <div class="flex-1 min-w-0 h-full flex flex-col">
+                        <div id="dream-grid" class="flex-1 min-h-0 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 grid-rows-3 sm:grid-rows-3 lg:grid-rows-2 gap-2 md:gap-4"></div>
+                        <div class="shrink-0 py-2 text-center text-xs text-gray-500"><span id="dream-page-label"></span></div>
+                    </div>
+                    <button type="button" onclick="changeDreamPage(1)" aria-label="Next dreams" class="shrink-0 w-9 h-9 md:w-11 md:h-11 rounded-full bg-[#1c1c21] border border-[#3a3a44] text-white hover:bg-violet-700">▶</button>
+                </div>
+                <footer class="shrink-0 p-3 md:p-4 border-t border-[#26262b] bg-[#141417] flex justify-center">
+                    <button type="button" onclick="openDreamModal()" class="border border-violet-400 bg-violet-700 hover:bg-violet-600 text-white px-7 py-2.5 rounded-lg text-sm font-black uppercase tracking-wider shadow">＋ Add Box</button>
+                </footer>
+            </section>
+
+            <div id="dream-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-3 md:p-4">
+                <div class="bg-[#141417] border-2 border-gray-600 p-5 w-full max-w-lg rounded-xl shadow-2xl max-h-[94dvh] overflow-y-auto">
+                    <h2 id="dream-modal-title" class="font-black text-lg mb-4 text-violet-300">Add a dream</h2>
+                    <label for="dream-description" class="block text-xs font-bold uppercase text-gray-300 mb-1">Describe your dream</label>
+                    <textarea id="dream-description" maxlength="1000" rows="4" class="w-full bg-[#1c1c21] border border-[#35353d] rounded-lg p-3 text-sm text-white focus:outline-none focus:border-violet-500" placeholder="What do you dream of doing, having, or becoming?"></textarea>
+                    <label for="dream-quote" class="block text-xs font-bold uppercase text-gray-300 mt-4 mb-1">Quote (optional)</label>
+                    <textarea id="dream-quote" maxlength="500" rows="2" class="w-full bg-[#1c1c21] border border-[#35353d] rounded-lg p-3 text-sm text-white focus:outline-none focus:border-violet-500" placeholder="Add a quote that inspires you"></textarea>
+                    <label for="dream-photos" class="block text-xs font-bold uppercase text-gray-300 mt-4 mb-1">Photos (up to 4)</label>
+                    <input id="dream-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple class="block w-full text-xs text-gray-300 file:mr-3 file:rounded file:border-0 file:bg-[#292833] file:px-3 file:py-2 file:text-gray-100">
+                    <div id="dream-photo-preview" class="grid grid-cols-4 gap-2 mt-3"></div>
+                    <p id="dream-error" class="hidden text-xs text-red-400 mt-3"></p>
+                    <div class="flex justify-between items-center gap-3 mt-5">
+                        <button id="dream-delete" type="button" onclick="deleteDream()" class="hidden text-xs text-red-400 font-bold">Delete</button>
+                        <div class="ml-auto flex gap-2"><button type="button" onclick="closeDreamModal()" class="px-3 py-2 text-gray-400 text-xs font-bold">Cancel</button><button type="button" onclick="saveDream()" class="px-4 py-2 rounded bg-violet-700 hover:bg-violet-600 text-white text-xs font-black">Save Dream</button></div>
+                    </div>
+                </div>
+            </div>
+            <script>
+                let dreams = ({{ initial | tojson }}).dreams || [];
+                let dreamPage = 0, editingDreamId = null, dreamPhotos = [];
+                const dreamEsc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+                function renderDreams() {
+                    const pages = Math.max(1, Math.ceil(dreams.length / 6)); dreamPage = Math.min(dreamPage, pages - 1);
+                    const visible = dreams.slice(dreamPage * 6, dreamPage * 6 + 6), grid = document.getElementById('dream-grid');
+                    grid.innerHTML = visible.map(d => '<button type="button" onclick="openDreamModal(\'' + d.id + '\')" class="group relative min-h-0 overflow-hidden rounded-xl border border-violet-400/30 bg-gradient-to-br from-[#211b32] to-[#141417] text-left shadow-lg hover:border-violet-300 hover:shadow-violet-950/40 focus:outline-none focus:ring-2 focus:ring-violet-400">' +
+                        (d.photos && d.photos.length ? '<img src="' + d.photos[0] + '" alt="" class="absolute inset-0 w-full h-full object-cover opacity-45 group-hover:opacity-60 transition">' : '<div class="absolute inset-0 flex items-center justify-center text-6xl opacity-10">✦</div>') +
+                        '<span class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent"></span><span class="relative z-10 flex h-full flex-col justify-end p-4 md:p-5"><span class="text-sm md:text-base font-bold leading-snug text-white whitespace-pre-wrap break-words">' + dreamEsc(d.description) + '</span>' + (d.quote ? '<span class="text-xs md:text-sm text-violet-200 italic mt-2 line-clamp-2">“' + dreamEsc(d.quote) + '”</span>' : '') + (d.photos && d.photos.length > 1 ? '<span class="text-[10px] text-gray-300 mt-2">+' + (d.photos.length - 1) + ' more photo' + (d.photos.length > 2 ? 's' : '') + '</span>' : '') + '</span></button>').join('');
+                    while (visible.length < 6 && dreams.length) { const placeholder = document.createElement('div'); placeholder.className = 'hidden sm:block rounded-xl border border-dashed border-[#303039] bg-[#121215]/60'; grid.appendChild(placeholder); visible.push(null); }
+                    if (!dreams.length) grid.innerHTML = '<button type="button" onclick="openDreamModal()" class="col-span-full row-span-full rounded-xl border-2 border-dashed border-violet-400/30 bg-[#141417] text-gray-400 hover:text-white hover:border-violet-400 flex flex-col items-center justify-center gap-3"><span class="text-5xl">✦</span><span class="font-semibold">Your dreams will appear here</span><span class="text-xs">Choose Add Box to create your first one</span></button>';
+                    document.getElementById('dream-page-label').textContent = dreams.length ? ('Showing ' + (dreamPage * 6 + 1) + '–' + Math.min((dreamPage + 1) * 6, dreams.length) + ' of ' + dreams.length) : '';
+                }
+                function changeDreamPage(n) { const pages = Math.max(1, Math.ceil(dreams.length / 6)); dreamPage = (dreamPage + n + pages) % pages; renderDreams(); }
+                function openDreamModal(id) {
+                    editingDreamId = id || null; const d = id ? dreams.find(x => x.id === id) : null;
+                    if (id && !d) return; dreamPhotos = d ? [...(d.photos || [])] : [];
+                    document.getElementById('dream-modal-title').textContent = d ? 'Edit your dream' : 'Add a dream';
+                    document.getElementById('dream-description').value = d ? d.description : ''; document.getElementById('dream-quote').value = d ? d.quote : '';
+                    document.getElementById('dream-photos').value = ''; document.getElementById('dream-delete').classList.toggle('hidden', !d); document.getElementById('dream-error').classList.add('hidden');
+                    renderDreamPhotoPreview(); document.getElementById('dream-modal').classList.remove('hidden');
+                }
+                function closeDreamModal() { document.getElementById('dream-modal').classList.add('hidden'); editingDreamId = null; }
+                function renderDreamPhotoPreview() { document.getElementById('dream-photo-preview').innerHTML = dreamPhotos.map((p,i) => '<button type="button" onclick="removeDreamPhoto(' + i + ')" class="relative aspect-square"><img src="' + p + '" class="w-full h-full object-cover rounded"><span class="absolute -top-1 -right-1 rounded-full bg-red-600 text-white w-5 h-5 text-xs">×</span></button>').join(''); }
+                function removeDreamPhoto(i) { dreamPhotos.splice(i,1); renderDreamPhotoPreview(); }
+                function compressDreamPhoto(file) {
+                    return new Promise((resolve, reject) => {
+                        const url = URL.createObjectURL(file), image = new Image();
+                        image.onload = () => { const scale = Math.min(1, 1400 / Math.max(image.width, image.height)); const canvas = document.createElement('canvas'); canvas.width = Math.round(image.width * scale); canvas.height = Math.round(image.height * scale); const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(image, 0, 0, canvas.width, canvas.height); URL.revokeObjectURL(url); resolve(canvas.toDataURL('image/jpeg', .78)); };
+                        image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This photo could not be opened.')); }; image.src = url;
+                    });
+                }
+                document.getElementById('dream-photos').addEventListener('change', async e => {
+                    const files = Array.from(e.target.files || []); if (files.length + dreamPhotos.length > 4) { showDreamError('Choose up to four photos per dream.'); e.target.value = ''; return; }
+                    for (const file of files) { if (!file.type.startsWith('image/') || file.size > 20_000_000) { showDreamError('Choose an image smaller than 20 MB.'); continue; } try { dreamPhotos.push(await compressDreamPhoto(file)); } catch (err) { showDreamError(err.message); } }
+                    renderDreamPhotoPreview(); e.target.value = '';
+                });
+                function showDreamError(msg) { const e = document.getElementById('dream-error'); e.textContent = msg; e.classList.remove('hidden'); }
+                async function saveDream() {
+                    const description = document.getElementById('dream-description').value.trim(); if (!description) return showDreamError('Please describe your dream.');
+                    const dream = { id: editingDreamId || ('d_' + Math.random().toString(36).slice(2,10)), description, quote: document.getElementById('dream-quote').value.trim(), photos: dreamPhotos };
+                    if (editingDreamId) dreams = dreams.map(d => d.id === editingDreamId ? dream : d); else dreams.push(dream);
+                    closeDreamModal(); dreamPage = Math.floor((dreams.length - 1) / 6); renderDreams(); document.getElementById('dream-save-status').textContent = 'Saving…';
+                    try { const r = await fetch('/api/dreams', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({dreams})}); if (!r.ok) { const data = await r.json(); throw new Error(data.error || 'Could not save'); } document.getElementById('dream-save-status').textContent = 'Saved ✓'; }
+                    catch (err) { document.getElementById('dream-save-status').textContent = 'Not saved'; alert(err.message); }
+                }
+                async function deleteDream() { if (!editingDreamId) return; dreams = dreams.filter(d => d.id !== editingDreamId); closeDreamModal(); renderDreams(); document.getElementById('dream-save-status').textContent = 'Saving…'; try { const r=await fetch('/api/dreams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dreams})}); if(!r.ok) throw new Error(); document.getElementById('dream-save-status').textContent='Saved ✓'; } catch(e) { document.getElementById('dream-save-status').textContent='Not saved'; alert('Could not save this change.'); } }
+                renderDreams();
+            </script>
 
         {% else %}
             <!-- DEFAULT BLANK CANVAS FOR OTHER TABS -->

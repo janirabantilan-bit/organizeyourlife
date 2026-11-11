@@ -54,6 +54,22 @@
     main::-webkit-scrollbar-thumb:hover {
         background: #60a5fa !important;
     }
+    @media (max-width: 767px) {
+        html, body { height: 100dvh !important; overflow: hidden !important; }
+        main { height: calc(100dvh - 49px) !important; max-height: calc(100dvh - 49px) !important; overflow-y: auto !important; padding: 0 0 1rem !important; }
+        main > div { height: auto !important; }
+        main section .max-w-4xl { padding-left: 1rem; padding-right: 1rem; }
+        main section .max-w-4xl > div:first-child { gap: .75rem; }
+        main section .max-w-4xl > div:first-child > div:first-child { width: 3.5rem; height: 3.5rem; font-size: 2rem; }
+        #day-panel { overflow-wrap: anywhere; }
+        #day-panel .flex.rounded-lg > div { min-width: 0; }
+        #day-panel .flex.rounded-lg .text-base, #day-panel .flex.rounded-lg .text-sm { overflow-wrap: anywhere; }
+        #day-panel .flex.rounded-lg .shrink-0.text-right { min-width: 3.25rem; }
+        #day-panel .flex.items-end.justify-between { flex-wrap: wrap; align-items: center; gap: .5rem; }
+        #day-panel .flex.items-end.justify-between > div:last-child { flex-wrap: wrap; }
+        #day-panel .flex.items-end.justify-between > div:last-child button { padding-left: .45rem; padding-right: .45rem; }
+        main > div > div.sticky > div { padding-left: .75rem; padding-right: .75rem; gap: .35rem; }
+    }
 </style>
 </head>
 <body class="bg-[#0f0f11] text-gray-200 font-sans min-h-screen flex flex-col md:flex-row overflow-x-hidden md:overflow-hidden">

@@ -296,6 +296,8 @@ SECTIONS = {"tasks": "Tasks", "goals": "Goals", "finance": "Finance", "dreams": 
 def section(name):
     if name == "goals":
         return render_template("goals.html", active_page="goals", initial=load_goals())
+    if name == "dreams":
+        return render_template("section.html", active_page=name, page_title=SECTIONS[name], initial=load_dreams())
     return render_template("section.html", active_page=name, page_title=SECTIONS[name])
 
 # ---------------------------------------------------------------------------
@@ -355,6 +357,57 @@ def api_goals():
         row.data_json = data_json
     else:
         db.session.add(UserStore(user_id=current_user.id, key="goals", data_json=data_json))
+    db.session.commit()
+    return jsonify(ok=True)
+
+def load_dreams():
+    row = UserStore.query.filter_by(user_id=current_user.id, key="dreams").first()
+    if row:
+        try:
+            data = json.loads(row.data_json)
+            if isinstance(data, dict) and isinstance(data.get("dreams"), list):
+                return data
+        except json.JSONDecodeError:
+            pass
+    return {"dreams": []}
+
+def clean_dreams(payload):
+    dreams, seen = [], set()
+    for dream in (payload.get("dreams") or [])[:500]:
+        if not isinstance(dream, dict):
+            continue
+        dream_id = str(dream.get("id", ""))[:40]
+        description = str(dream.get("description", "")).strip()[:1000]
+        quote = str(dream.get("quote", "")).strip()[:500]
+        photos = dream.get("photos", [])
+        if not dream_id or dream_id in seen or not description or not isinstance(photos, list):
+            continue
+        safe_photos = []
+        for photo in photos[:4]:
+            if not isinstance(photo, str) or len(photo) > 1_400_000:
+                continue
+            if photo.startswith(("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")):
+                safe_photos.append(photo)
+        seen.add(dream_id)
+        dreams.append({"id": dream_id, "description": description, "quote": quote, "photos": safe_photos})
+    return {"dreams": dreams}
+
+@app.route("/api/dreams", methods=["GET", "POST"])
+@login_required
+def api_dreams():
+    if request.method == "GET":
+        return jsonify(load_dreams())
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify(ok=False, error="bad input"), 400
+    data_json = json.dumps(clean_dreams(payload))
+    if len(data_json) > 5_500_000:
+        return jsonify(ok=False, error="Dreams data is too large. Use fewer or smaller photos."), 413
+    row = UserStore.query.filter_by(user_id=current_user.id, key="dreams").first()
+    if row:
+        row.data_json = data_json
+    else:
+        db.session.add(UserStore(user_id=current_user.id, key="dreams", data_json=data_json))
     db.session.commit()
     return jsonify(ok=True)
 

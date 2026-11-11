@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goals – My Scheduler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .thick-border { border: 2px solid #6b7280; }
+        .goal-btn { transition: filter .15s ease, transform .15s ease; }
+        .goal-btn:hover { filter: brightness(1.12); transform: translateY(-1px); }
+        .col-scroll { scrollbar-width: thin; scrollbar-color: #3a3a44 transparent; }
+        @keyframes goalPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,255,255,.0); } 50% { box-shadow: 0 0 0 6px rgba(255,255,255,.35); } }
+        .goal-flash { animation: goalPulse 1s ease 2; }
+    </style>
+</head>
+<body class="bg-[#0f0f11] text-gray-200 font-sans min-h-screen flex flex-col md:flex-row overflow-x-hidden md:overflow-hidden">
+
+    {% include '_sidebar.html' %}
+
+    <main class="flex-1 min-w-0 flex flex-col h-[calc(100dvh-3.25rem)] md:h-screen">
+
+        <!-- TOP BAR -->
+        <header class="shrink-0 px-4 md:px-8 py-3 border-b border-[#26262b] bg-[#141417] flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-3">
+                <h1 class="text-base font-black uppercase tracking-wider text-gray-100">🎯 My Goals</h1>
+                <span id="summary" class="text-[11px] text-gray-500 font-mono"></span>
+            </div>
+            <span id="save-status" class="text-[11px] text-gray-500 font-mono"></span>
+        </header>
+
+        <!-- THE BOX WITH THE THREE DIVISIONS -->
+        <div class="flex-1 min-h-0 p-3 md:p-5 overflow-y-auto lg:overflow-hidden">
+            <div class="thick-border bg-[#141417] rounded-lg overflow-hidden grid grid-cols-1 lg:grid-cols-3 lg:h-full">
+                <section id="col-short" class="flex flex-col min-h-[260px] lg:min-h-0"></section>
+                <section id="col-mid" class="flex flex-col min-h-[260px] lg:min-h-0 border-t-2 lg:border-t-0 lg:border-l-2 border-gray-500"></section>
+                <section id="col-long" class="flex flex-col min-h-[260px] lg:min-h-0 border-t-2 lg:border-t-0 lg:border-l-2 border-gray-500"></section>
+            </div>
+        </div>
+
+        <!-- BOTTOM BAR: ADD GOAL -->
+        <div class="shrink-0 p-3 md:p-4 border-t border-[#26262b] bg-[#141417]">
+            <div class="flex items-center gap-2 max-w-4xl mx-auto">
+                <input type="text" readonly onclick="openGoalModal()" placeholder="Click here to add a goal…"
+                       class="flex-1 thick-border bg-[#1c1c21] hover:border-blue-400 text-gray-100 px-3 py-2 text-xs cursor-pointer focus:outline-none">
+                <button type="button" onclick="openGoalModal()" class="thick-border bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shrink-0 transition shadow">
+                    <span>+</span> ADD GOAL
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- ADD / EDIT GOAL WINDOW -->
+    <div id="goal-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-[#141417] thick-border p-5 w-full max-w-md rounded shadow-2xl max-h-[92vh] overflow-y-auto">
+            <h3 id="gm-title" class="font-black text-sm mb-4 uppercase text-blue-400">Add goal</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-[11px] font-bold text-gray-300 uppercase">Goal description</label>
+                    <textarea id="gm-text" rows="2" maxlength="200" placeholder="What do you want to achieve?" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-sm text-gray-100 mt-1 focus:outline-none focus:border-blue-500"></textarea>
+                </div>
+                <div>
+                    <label class="text-[11px] font-bold text-gray-300 uppercase">When do you plan to achieve it?</label>
+                    <input type="date" id="gm-date" oninput="updatePreview()" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-sm text-gray-100 mt-1 focus:outline-none focus:border-blue-500">
+                    <p id="gm-preview" class="text-[11px] text-gray-400 mt-1 min-h-[16px]"></p>
+                </div>
+                <div>
+                    <label class="text-[11px] font-bold text-gray-300 uppercase">Describe your benefit for achieving this goal</label>
+                    <textarea id="gm-benefit" rows="3" maxlength="400" placeholder="Why does this goal matter? What will change for you?" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-100 mt-1 focus:outline-none focus:border-blue-500"></textarea>
+                </div>
+                <p id="gm-error" class="hidden text-xs text-red-400"></p>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-2 mt-5">
+                <div class="flex gap-2">
+                    <button type="button" id="gm-delete" onclick="deleteGoal()" class="hidden px-2.5 py-1.5 text-red-400 hover:text-red-300 text-xs font-bold">Delete</button>
+                    <button type="button" id="gm-done" onclick="toggleDone()" class="hidden px-2.5 py-1.5 border border-emerald-600 text-emerald-300 hover:bg-emerald-600/20 text-xs font-bold rounded transition"></button>
+                </div>
+                <div class="flex gap-2 ml-auto">
+                    <button type="button" onclick="closeGoalModal()" class="px-3 py-1.5 text-gray-400 hover:text-white text-xs font-bold">Cancel</button>
+                    <button type="button" id="gm-save" onclick="saveGoal()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs rounded transition">Save Goal</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ------------------------------------------------------------------
+        // Data: goals = [{id, text, date 'YYYY-MM-DD', benefit, done, doneAt, created}]
+        // Saved on the server for the logged-in user.
+        // ------------------------------------------------------------------
+        let goals = ({{ initial | tojson }}).goals || [];
+        let editingId = null;
+        let saveQueue = Promise.resolve();
+
+        // The three divisions. Which one a goal sits in depends only on its date.
+        const DIVISIONS = [
+            { key: 'short', col: 'col-short', title: 'Short term goals', sub: 'Within 1–3 months',          color: '#2563eb', tint: 'rgba(37, 99, 235, 0.16)' },
+            { key: 'mid',   col: 'col-mid',   title: 'Mid-term goals',   sub: 'From 3 months to 1 year',    color: '#7c3aed', tint: 'rgba(124, 58, 237, 0.16)' },
+            { key: 'long',  col: 'col-long',  title: 'Long term goals',  sub: 'More than 1 year',           color: '#be185d', tint: 'rgba(190, 24, 93, 0.16)' }
+        ];
+
+        const $ = id => document.getElementById(id);
+        function esc(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        // ---------------- dates ----------------
+        function startOfToday() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+        function parseISO(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); }
+        function toISO(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+        function addMonths(date, n) {
+            const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+            const day = d.getDate();
+            d.setMonth(d.getMonth() + n);
+            if (d.getDate() !== day) d.setDate(0);   // e.g. Nov 30 + 3 months -> Feb 28
+            return d;
+        }
+        function daysLeft(iso) { return Math.round((parseISO(iso) - startOfToday()) / 86400000); }
+        function fmtDate(iso) { return parseISO(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+
+        function divisionOf(iso) {
+            const target = parseISO(iso), today = startOfToday();
+            if (target <= addMonths(today, 3)) return 'short';
+            if (target <= addMonths(today, 12)) return 'mid';
+            return 'long';
+        }
+
+        // Countdown circle: red under 30 days, yellow 30-60 days, green over 60 days.
+        function circleStyle(days) {
+            if (days < 30) return { bg: '#dc2626', fg: '#ffffff' };
+            if (days <= 60) return { bg: '#facc15', fg: '#1f2937' };
+            return { bg: '#16a34a', fg: '#ffffff' };
+        }
+
+        // ---------------- saving ----------------
+        function setSave(s) { $('save-status').textContent = s === 'saving' ? 'Saving…' : s === 'saved' ? 'Saved ✓' : '⚠ Not saved'; }
+        function persist() {
+            render();
+            setSave('saving');
+            const snapshot = JSON.stringify({ goals: goals });
+            saveQueue = saveQueue.then(async () => {
+                try {
+                    const r = await fetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: snapshot });
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    setSave('saved');
+                } catch (e) { setSave('error'); }
+            });
+        }
+
+        // ---------------- drawing ----------------
+        function goalHtml(g, div) {
+            const days = daysLeft(g.date);
+            let circle;
+            if (g.done) {
+                circle = '<div class="shrink-0 w-14 h-14 rounded-full border-4 border-white bg-amber-500 flex items-center justify-center text-2xl shadow-lg" title="Achieved">🏆</div>';
+            } else {
+                const c = circleStyle(days);
+                const label = days < 0 ? 'overdue' : (days === 1 ? 'day' : 'days');
+                circle = '<div class="shrink-0 w-14 h-14 rounded-full border-4 border-white flex flex-col items-center justify-center shadow-lg leading-none" ' +
+                         'style="background:' + c.bg + ';color:' + c.fg + '" title="' + (days < 0 ? Math.abs(days) + ' days overdue' : days + ' days left') + '">' +
+                         '<span class="text-lg font-black">' + days + '</span><span class="text-[8px] font-bold uppercase mt-0.5">' + label + '</span></div>';
+            }
+            return '<div role="button" tabindex="0" id="goal-' + g.id + '" onclick="openGoalModal(\'' + g.id + '\')" onkeydown="if(event.key===\'Enter\')openGoalModal(\'' + g.id + '\')" ' +
+                   'class="goal-btn cursor-pointer w-full text-left rounded-lg border-2 border-white/25 shadow-lg p-4 flex items-center gap-3 ' + (g.done ? 'opacity-60' : '') + '" ' +
+                   'style="background:' + div.color + '">' +
+                       '<div class="flex-1 min-w-0">' +
+                           '<div class="text-sm font-black text-white break-words ' + (g.done ? 'line-through' : '') + '">' + esc(g.text) + '</div>' +
+                           '<div class="text-[11px] font-mono font-bold text-white/90 mt-1">🎯 ' + fmtDate(g.date) + '</div>' +
+                           (g.benefit ? '<div class="text-[10px] leading-snug text-white/80 italic mt-1.5 break-words">Benefit: ' + esc(g.benefit) + '</div>' : '') +
+                       '</div>' + circle +
+                   '</div>';
+        }
+
+        function render() {
+            const groups = { short: [], mid: [], long: [] };
+            goals.forEach(g => groups[divisionOf(g.date)].push(g));
+
+            DIVISIONS.forEach(div => {
+                // Soonest date first. Achieved goals drop to the bottom of their list.
+                const list = groups[div.key].slice().sort((a, b) =>
+                    (a.done - b.done) || a.date.localeCompare(b.date) || ((a.created || 0) - (b.created || 0)));
+                $(div.col).innerHTML =
+                    '<div class="shrink-0 px-4 py-3 border-b-2 border-gray-500" style="background:' + div.tint + '">' +
+                        '<div class="flex items-center justify-between gap-2">' +
+                            '<h2 class="text-sm font-black uppercase tracking-wider" style="color:' + div.color + ';filter:brightness(1.5)">' + div.title + '</h2>' +
+                            '<span class="px-2 py-0.5 rounded-full text-[11px] font-black text-white" style="background:' + div.color + '">' + list.length + '</span>' +
+                        '</div>' +
+                        '<p class="text-[11px] text-gray-400 mt-0.5">' + div.sub + '</p>' +
+                    '</div>' +
+                    '<div class="col-scroll flex-1 min-h-0 lg:overflow-y-auto p-3 space-y-3">' +
+                        (list.length ? list.map(g => goalHtml(g, div)).join('')
+                                     : '<p class="text-[11px] text-gray-600 border-2 border-dashed border-[#2a2a32] rounded-lg px-3 py-8 text-center">No goals here yet.<br>Add a goal with a date in this range and it lands here.</p>') +
+                    '</div>';
+            });
+
+            const done = goals.filter(g => g.done).length;
+            $('summary').textContent = goals.length ? goals.length + ' goal' + (goals.length === 1 ? '' : 's') + ' · ' + done + ' achieved' : '';
+        }
+
+        // ---------------- add / edit window ----------------
+        function updatePreview() {
+            const iso = $('gm-date').value;
+            const el = $('gm-preview');
+            if (!iso) { el.textContent = ''; return; }
+            const days = daysLeft(iso);
+            const div = DIVISIONS.find(d => d.key === divisionOf(iso));
+            el.innerHTML = 'Goes into <b style="color:' + div.color + ';filter:brightness(1.5)">' + div.title.toUpperCase() + '</b> · ' +
+                           (days < 0 ? Math.abs(days) + ' days ago' : days === 0 ? 'today' : days + ' day' + (days === 1 ? '' : 's') + ' from today');
+        }
+        function showError(msg) {
+            const el = $('gm-error');
+            el.textContent = msg || '';
+            el.classList.toggle('hidden', !msg);
+        }
+
+        function openGoalModal(id) {
+            editingId = id || null;
+            const g = id ? goals.find(x => x.id === id) : null;
+            if (id && !g) return;
+            $('gm-title').textContent = g ? 'Edit goal' : 'Add goal';
+            $('gm-text').value = g ? g.text : '';
+            $('gm-date').value = g ? g.date : '';
+            $('gm-date').min = g ? '' : toISO(startOfToday());     // new goals must be in the future
+            $('gm-benefit').value = g ? g.benefit : '';
+            $('gm-save').textContent = g ? 'Save Changes' : 'Save Goal';
+            $('gm-delete').classList.toggle('hidden', !g);
+            const doneBtn = $('gm-done');
+            doneBtn.classList.toggle('hidden', !g);
+            if (g) doneBtn.textContent = g.done ? '↩ Mark as not achieved' : '🏆 Mark as achieved';
+            showError('');
+            updatePreview();
+            $('goal-modal').classList.remove('hidden');
+            $('gm-text').focus();
+        }
+        function closeGoalModal() {
+            $('goal-modal').classList.add('hidden');
+            editingId = null;
+        }
+
+        function saveGoal() {
+            const text = $('gm-text').value.trim();
+            const date = $('gm-date').value;
+            const benefit = $('gm-benefit').value.trim();
+            if (!text) { showError('Please describe your goal.'); $('gm-text').focus(); return; }
+            if (!date) { showError('Please pick the date you plan to achieve it.'); $('gm-date').focus(); return; }
+
+            let focusId;
+            if (editingId) {
+                const g = goals.find(x => x.id === editingId);
+                if (!g) return closeGoalModal();
+                g.text = text; g.date = date; g.benefit = benefit;
+                focusId = g.id;
+            } else {
+                if (daysLeft(date) < 0) { showError('Pick a date that is today or later.'); $('gm-date').focus(); return; }
+                const g = { id: 'g_' + Math.random().toString(36).slice(2, 10), text: text, date: date, benefit: benefit, done: false, doneAt: '', created: Date.now() };
+                goals.push(g);
+                focusId = g.id;
+            }
+            closeGoalModal();
+            persist();
+            flashGoal(focusId);
+        }
+
+        function toggleDone() {
+            const g = goals.find(x => x.id === editingId);
+            if (!g) return;
+            g.done = !g.done;
+            g.doneAt = g.done ? toISO(startOfToday()) : '';
+            closeGoalModal();
+            persist();
+        }
+        function deleteGoal() {
+            if (!editingId) return;
+            if (!confirm('Delete this goal?')) return;
+            goals = goals.filter(x => x.id !== editingId);
+            closeGoalModal();
+            persist();
+        }
+
+        // after saving, scroll to the goal and give it a quick glow
+        function flashGoal(id) {
+            const el = $('goal-' + id);
+            if (!el) return;
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            el.classList.add('goal-flash');
+            setTimeout(() => el.classList.remove('goal-flash'), 2200);
+        }
+
+        document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeGoalModal(); });
+
+        render();
+    </script>
+</body>
+</html>

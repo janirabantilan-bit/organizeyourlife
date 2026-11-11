@@ -55,9 +55,20 @@ class FinanceData(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     data_json = db.Column(db.Text, default='{"incomes":[],"tabs":{},"unassigned":[],"savings":[],"quote":""}')
 
+class UserStore(db.Model):
+    """Small per-user storage (used by the Goals page)."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    key = db.Column(db.String(40), nullable=False)
+    data_json = db.Column(db.Text, nullable=False, default='{}')
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+# Create any missing tables (like UserStore) when the app starts, including on Render.
+with app.app_context():
+    db.create_all()
 
 @app.template_filter("format_time")
 def format_time_filter(time_str):
@@ -283,7 +294,69 @@ SECTIONS = {"tasks": "Tasks", "goals": "Goals", "finance": "Finance", "dreams": 
 @app.route("/<any(tasks, goals, finance, dreams):name>")
 @login_required
 def section(name):
+    if name == "goals":
+        return render_template("goals.html", active_page="goals", initial=load_goals())
     return render_template("section.html", active_page=name, page_title=SECTIONS[name])
+
+# ---------------------------------------------------------------------------
+# GOALS (saved per user)
+# ---------------------------------------------------------------------------
+def load_goals():
+    row = UserStore.query.filter_by(user_id=current_user.id, key="goals").first()
+    if row:
+        try:
+            data = json.loads(row.data_json)
+            if isinstance(data, dict) and isinstance(data.get("goals"), list):
+                return data
+        except json.JSONDecodeError:
+            pass
+    return {"goals": []}
+
+def clean_goals(payload):
+    """Keep only well-formed goals from what the browser sends."""
+    goals, seen = [], set()
+    for g in (payload.get("goals") or [])[:500]:
+        if not isinstance(g, dict):
+            continue
+        goal_id = str(g.get("id", ""))[:40]
+        text = str(g.get("text", "")).strip()[:200]
+        date = str(g.get("date", ""))[:10]
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            continue
+        if not goal_id or goal_id in seen or not text:
+            continue
+        seen.add(goal_id)
+        try:
+            created = int(g.get("created", 0))
+        except (TypeError, ValueError):
+            created = 0
+        goals.append({
+            "id": goal_id,
+            "text": text,
+            "date": date,
+            "benefit": str(g.get("benefit", "")).strip()[:400],
+            "done": bool(g.get("done")),
+            "doneAt": str(g.get("doneAt") or "")[:10],
+            "created": created,
+        })
+    return {"goals": goals}
+
+@app.route("/api/goals", methods=["POST"])
+@login_required
+def api_goals():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify(ok=False, error="bad input"), 400
+    data_json = json.dumps(clean_goals(payload))
+    row = UserStore.query.filter_by(user_id=current_user.id, key="goals").first()
+    if row:
+        row.data_json = data_json
+    else:
+        db.session.add(UserStore(user_id=current_user.id, key="goals", data_json=data_json))
+    db.session.commit()
+    return jsonify(ok=True)
 
 # Spreadsheet-style Cash Flow page (reads the same finance data as the Finance tab)
 @app.route("/cashflow")

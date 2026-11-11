@@ -379,17 +379,23 @@ def clean_dreams(payload):
         dream_id = str(dream.get("id", ""))[:40]
         description = str(dream.get("description", "")).strip()[:1000]
         quote = str(dream.get("quote", "")).strip()[:500]
-        photos = dream.get("photos", [])
-        if not dream_id or dream_id in seen or not description or not isinstance(photos, list):
+        media = dream.get("media")
+        if media is None:
+            media = [{"kind": "image", "src": photo} for photo in dream.get("photos", []) if isinstance(photo, str)]
+        if not dream_id or dream_id in seen or not description or not isinstance(media, list):
             continue
-        safe_photos = []
-        for photo in photos[:4]:
-            if not isinstance(photo, str) or len(photo) > 1_400_000:
+        safe_media = []
+        for item in media[:4]:
+            if not isinstance(item, dict):
                 continue
-            if photo.startswith(("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")):
-                safe_photos.append(photo)
+            src = item.get("src", "")
+            kind = "video" if item.get("kind") == "video" else "image"
+            allowed = ("data:video/mp4;base64,", "data:video/webm;base64,", "data:video/quicktime;base64,") if kind == "video" else ("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")
+            max_size = 18_000_000 if kind == "video" else 1_400_000
+            if isinstance(src, str) and len(src) <= max_size and src.startswith(allowed):
+                safe_media.append({"kind": kind, "src": src})
         seen.add(dream_id)
-        dreams.append({"id": dream_id, "description": description, "quote": quote, "photos": safe_photos})
+        dreams.append({"id": dream_id, "description": description, "quote": quote, "media": safe_media})
     return {"dreams": dreams}
 
 @app.route("/api/dreams", methods=["GET", "POST"])
@@ -401,8 +407,8 @@ def api_dreams():
     if not isinstance(payload, dict):
         return jsonify(ok=False, error="bad input"), 400
     data_json = json.dumps(clean_dreams(payload))
-    if len(data_json) > 5_500_000:
-        return jsonify(ok=False, error="Dreams data is too large. Use fewer or smaller photos."), 413
+    if len(data_json) > 30_000_000:
+        return jsonify(ok=False, error="Dream media is too large. Try a shorter or smaller video."), 413
     row = UserStore.query.filter_by(user_id=current_user.id, key="dreams").first()
     if row:
         row.data_json = data_json

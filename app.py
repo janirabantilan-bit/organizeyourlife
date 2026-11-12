@@ -314,7 +314,7 @@ def api_finance():
     data = json.loads(fin.data_json)
     data['_is_empty'] = is_new or not any([
         data.get('incomes'), data.get('tabs'), data.get('unassigned'), data.get('savings'),
-        data.get('quote'), data.get('beerMoney'),
+        data.get('loans'), data.get('quote'), data.get('beerMoney'),
         any((wallet.get('amount', 0) or 0) for wallet in data.get('wallets', []) if isinstance(wallet, dict))
     ])
     return jsonify(data)
@@ -848,7 +848,7 @@ def restore_finance_is_empty(data):
         return True
     return not any([
         data.get("incomes"), data.get("tabs"), data.get("unassigned"),
-        data.get("savings"), data.get("quote"), data.get("beerMoney"),
+        data.get("savings"), data.get("loans"), data.get("quote"), data.get("beerMoney"),
         any((wallet.get("amount", 0) or 0) for wallet in data.get("wallets", []) if isinstance(wallet, dict)),
     ])
 

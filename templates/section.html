@@ -100,9 +100,12 @@
 
                 <!-- BOTTOM BAR: DEBTS & PAYABLES -->
                 <div class="border-t border-[#26262b] bg-[#141417] p-4 shrink-0 min-h-[120px] flex flex-col gap-2.5">
-                    <div>
+                    <div class="flex flex-wrap items-center gap-2">
                         <button onclick="openModal('modal-debt')" class="thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition">
                             <span class="bg-gray-200 text-black rounded-full w-4 h-4 flex items-center justify-center text-sm leading-none">+</span> ADD DEBTS AND PAYABLES
+                        </button>
+                        <button onclick="openModal('modal-loan')" class="thick-border bg-[#1c1c21] hover:bg-amber-700 text-amber-200 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition">
+                            <span class="bg-amber-200 text-black rounded-full w-4 h-4 flex items-center justify-center text-sm leading-none">+</span> ADD LOAN
                         </button>
                     </div>
                     <div id="zone-unassigned" class="flex-1 drop-zone flex flex-wrap gap-2 p-2 border border-[#2a2a32] bg-[#0f0f11] rounded min-h-[50px]" ondragover="allowDrop(event)" ondrop="drop(event, 'unassigned')" ondragleave="dragLeave(event)"></div>
@@ -206,6 +209,26 @@
                 </div>
             </div>
 
+            <!-- Loan Modal -->
+            <div id="modal-loan" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div class="bg-[#141417] border border-amber-700/70 p-5 w-full max-w-sm rounded shadow-2xl">
+                    <h3 class="font-bold text-sm mb-2 uppercase text-amber-300">Add Loan</h3>
+                    <p class="text-[11px] text-gray-400 mb-4">The amount will be deducted once from the first income period dated after the loan date.</p>
+                    <div class="space-y-2.5">
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase" for="inp-loan-name">Loan name</label>
+                        <input type="text" id="inp-loan-name" maxlength="100" placeholder="e.g. Emergency loan" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 focus:outline-none focus:border-amber-500">
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase" for="inp-loan-date">Date of loan</label>
+                        <input type="date" id="inp-loan-date" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 focus:outline-none focus:border-amber-500">
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase" for="inp-loan-amount">Amount</label>
+                        <input type="number" step="0.01" min="0.01" id="inp-loan-amount" placeholder="Amount (e.g. 3000)" class="w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-xs text-gray-200 focus:outline-none focus:border-amber-500">
+                    </div>
+                    <div class="flex justify-end gap-2 mt-4">
+                        <button onclick="closeModals()" class="px-2.5 py-1 text-gray-400 hover:text-white text-xs font-medium">Cancel</button>
+                        <button onclick="saveLoan()" class="px-3 py-1 bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs rounded transition">Add Loan</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Beer Money Modal -->
             <div id="modal-beer" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
                 <div class="bg-[#141417] border border-[#2a2a32] p-6 w-full max-w-md rounded shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -295,11 +318,13 @@
                     tabs: {},
                     unassigned: [],
                     savings: [],
+                    loans: [],
                     quote: "",
                     wallets: DEFAULT_WALLETS,
                     beerMoney: []
                 };
                 let financeLoaded = false, financeSaveTimer = null;
+                if (!Array.isArray(fData.loans)) fData.loans = [];
                 if (!fData.beerMoney) fData.beerMoney = [];
                 if (!fData.wallets || !Array.isArray(fData.wallets) || fData.wallets.length === 0) {
                     fData.wallets = JSON.parse(JSON.stringify(DEFAULT_WALLETS));
@@ -325,7 +350,7 @@
                 }
 
                 function financeHasContent(data) {
-                    return !!(data.incomes?.length || Object.keys(data.tabs || {}).length || data.unassigned?.length || data.savings?.length || data.quote || data.beerMoney?.length || (data.wallets || []).some(w => Number(w.amount) !== 0));
+                    return !!(data.incomes?.length || Object.keys(data.tabs || {}).length || data.unassigned?.length || data.savings?.length || data.loans?.length || data.quote || data.beerMoney?.length || (data.wallets || []).some(w => Number(w.amount) !== 0));
                 }
                 async function initializeFinanceSync() {
                     const status = document.getElementById('finance-sync-status');
@@ -340,6 +365,7 @@
                             status.textContent = 'Synced from this device ✓';
                         } else {
                             fData = {...fData, ...remote};
+                            if (!Array.isArray(fData.loans)) fData.loans = [];
                             if (!fData.beerMoney) fData.beerMoney = [];
                             if (!fData.wallets || !fData.wallets.length) fData.wallets = JSON.parse(JSON.stringify(DEFAULT_WALLETS));
                             status.textContent = 'Synced ✓';
@@ -376,6 +402,13 @@
 
                 function openModal(id) {
                     if (id === 'modal-quote' && fData.quote && fData.quote.trim() !== "") return;
+                    if (id === 'modal-loan') {
+                        const dateInput = document.getElementById('inp-loan-date');
+                        if (!dateInput.value) {
+                            const now = new Date();
+                            dateInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                        }
+                    }
                     if (id === 'modal-wallet') {
                         renderWalletModalInputs();
                     }
@@ -493,7 +526,7 @@
                 }
 
                 function closeModals() {
-                    ['modal-income', 'modal-debt', 'modal-quote', 'modal-wallet', 'modal-beer'].forEach(id => {
+                    ['modal-income', 'modal-debt', 'modal-loan', 'modal-quote', 'modal-wallet', 'modal-beer'].forEach(id => {
                         const el = document.getElementById(id);
                         if (el) el.classList.add('hidden');
                     });
@@ -501,6 +534,9 @@
                     document.getElementById('inp-inc-amt').value = '';
                     document.getElementById('inp-debt-desc').value = '';
                     document.getElementById('inp-debt-amt').value = '';
+                    document.getElementById('inp-loan-name').value = '';
+                    document.getElementById('inp-loan-date').value = '';
+                    document.getElementById('inp-loan-amount').value = '';
                     document.getElementById('inp-quote-text').value = '';
                     ['inp-beer-custom', 'inp-beer-money', 'inp-beer-coins', 'inp-beer-shopeepay', 'inp-beer-affilt', 'inp-beer-lazadamoney', 'inp-beer-ref', 'inp-beer-points', 'inp-beer-vouchers'].forEach(id => {
                         const el = document.getElementById(id);
@@ -514,8 +550,25 @@
                     if (!dateRaw || isNaN(amt)) return;
                     const dateObj = new Date(dateRaw + 'T00:00:00');
                     const displayDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    fData.incomes.push({ id: 'inc_' + generateId(), date: displayDate, amount: amt, tabs: [] });
+                    fData.incomes.push({ id: 'inc_' + generateId(), date: displayDate, dateISO: dateRaw, amount: amt, tabs: [] });
                     closeModals();
+                    saveState();
+                }
+
+                function saveLoan() {
+                    const name = document.getElementById('inp-loan-name').value.trim();
+                    const date = document.getElementById('inp-loan-date').value;
+                    const amount = parseFloat(document.getElementById('inp-loan-amount').value);
+                    if (!name || !date || !Number.isFinite(amount) || amount <= 0) return;
+                    fData.loans.push({ id: 'loan_' + generateId(), name, date, amount });
+                    closeModals();
+                    saveState();
+                }
+
+                function deleteLoan(event, id) {
+                    event.stopPropagation();
+                    if (!confirm('Remove this loan and its scheduled income deduction?')) return;
+                    fData.loans = fData.loans.filter(loan => loan.id !== id);
                     saveState();
                 }
 
@@ -640,6 +693,79 @@
                     return el;
                 }
 
+                function financeDateISO(value) {
+                    const raw = String(value || '');
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+                    const match = raw.match(/^([A-Za-z]{3})\s+(\d{1,2})$/);
+                    if (!match) return null;
+                    const months = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+                    const month = months[match[1].toLowerCase()];
+                    const day = parseInt(match[2], 10);
+                    const year = new Date().getFullYear();
+                    const date = new Date(year, month - 1, day);
+                    if (!month || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+                    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                }
+
+                function getLoanAssignments() {
+                    const periods = fData.incomes
+                        .map(income => ({ income, date: financeDateISO(income.dateISO || income.date) }))
+                        .filter(period => period.date)
+                        .sort((a, b) => a.date.localeCompare(b.date));
+
+                    return fData.loans.map(loan => {
+                        const loanDate = financeDateISO(loan.date);
+                        const target = loanDate ? periods.find(period => period.date > loanDate) || null : null;
+                        const previousPeriods = loanDate ? periods.filter(period => period.date <= loanDate) : [];
+                        const source = previousPeriods[previousPeriods.length - 1] || target || null;
+                        return {
+                            loan,
+                            targetIncomeId: target ? target.income.id : null,
+                            targetDate: target ? target.income.date : null,
+                            sourceIncomeId: source ? source.income.id : null
+                        };
+                    });
+                }
+
+                function createLoanGroupBox(assignments) {
+                    const box = document.createElement('div');
+                    box.className = 'thick-border border-amber-700/70 bg-amber-950/25 rounded p-2 flex flex-col gap-2';
+                    const targetDate = assignments.find(item => item.targetDate)?.targetDate;
+                    const heading = document.createElement('div');
+                    heading.className = 'text-[10px] font-black uppercase tracking-wide text-amber-300';
+                    heading.textContent = targetDate ? `Loan deduction for ${targetDate}` : 'Waiting for next income period';
+                    box.appendChild(heading);
+
+                    assignments.forEach(({ loan }) => {
+                        const row = document.createElement('div');
+                        row.className = 'flex items-start justify-between gap-2 bg-[#141417]/80 border border-amber-900/50 rounded px-2 py-1.5';
+                        const details = document.createElement('div');
+                        details.className = 'min-w-0';
+                        const name = document.createElement('div');
+                        name.className = 'text-xs font-bold text-gray-100 break-words';
+                        name.textContent = loan.name || 'Loan';
+                        const date = document.createElement('div');
+                        date.className = 'text-[10px] text-gray-400';
+                        const dateValue = financeDateISO(loan.date);
+                        date.textContent = dateValue ? `Date: ${dateValue}` : '';
+                        details.append(name, date);
+
+                        const amount = document.createElement('div');
+                        amount.className = 'text-xs font-black text-amber-200 shrink-0';
+                        amount.textContent = `₱${(Number(loan.amount) || 0).toLocaleString()}`;
+
+                        const remove = document.createElement('button');
+                        remove.type = 'button';
+                        remove.className = 'text-gray-500 hover:text-red-400 text-xs shrink-0';
+                        remove.title = 'Remove loan';
+                        remove.textContent = '✕';
+                        remove.onclick = event => deleteLoan(event, loan.id);
+                        row.append(details, amount, remove);
+                        box.appendChild(row);
+                    });
+                    return box;
+                }
+
                 function renderUI() {
                     // Render Wallets Total & Top Strip Badges (GCash, PayMaya, etc.)
                     let totalWalletAmt = 0;
@@ -664,6 +790,7 @@
                     const incContainer = document.getElementById('incomes-container');
                     if (incContainer) {
                         incContainer.innerHTML = '';
+                        const loanAssignments = getLoanAssignments();
                         const savingsZone = document.getElementById('zone-savings');
                         savingsZone.innerHTML = '';
                         let savingsSum = 0;
@@ -680,16 +807,27 @@
                                     }
                                 }
                             });
-                            let remaining = inc.amount - deducted;
+                            const incomeLoanAssignments = loanAssignments.filter(item => item.targetIncomeId === inc.id);
+                            const loanDeduction = incomeLoanAssignments.reduce((sum, item) => sum + (Number(item.loan.amount) || 0), 0);
+                            let remaining = (Number(inc.amount) || 0) - deducted - loanDeduction;
 
+                            const periodColumn = document.createElement('div');
+                            periodColumn.className = 'w-48 shrink-0 flex flex-col gap-2';
                             const div = document.createElement('div');
-                            div.className = "relative w-48 shrink-0 thick-border bg-[#141417] p-3 flex flex-col shadow-lg min-h-[220px] group";
-                            div.innerHTML = `<button onclick="deleteIncome('${inc.id}')" class="absolute top-1.5 right-1.5 text-gray-500 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition">✕</button><div class="text-center mb-3 border-b border-[#26262b] pb-2"><div class="font-black text-xl text-gray-100">${remaining}</div><div class="text-[11px] font-bold tracking-wider text-gray-400 mt-0.5">${inc.date}</div></div><div id="${inc.id}" class="flex-1 drop-zone flex flex-col gap-1.5 min-h-[90px] p-1.5 border-2 border-transparent" ondragover="allowDrop(event)" ondrop="drop(event, '${inc.id}')" ondragleave="dragLeave(event)"></div>`;
-                            incContainer.appendChild(div);
+                            div.className = "relative w-full thick-border bg-[#141417] p-3 flex flex-col shadow-lg min-h-[220px] group";
+                            div.innerHTML = `<button onclick="deleteIncome('${inc.id}')" class="absolute top-1.5 right-1.5 text-gray-500 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition">✕</button><div class="text-center mb-3 border-b border-[#26262b] pb-2"><div class="font-black text-xl text-gray-100">${remaining.toLocaleString()}</div><div class="text-[11px] font-bold tracking-wider text-gray-400 mt-0.5">${inc.date}</div>${loanDeduction > 0 ? `<div class="text-[10px] font-semibold text-amber-300 mt-1">Includes ₱${loanDeduction.toLocaleString()} loan deduction</div>` : ''}</div><div id="${inc.id}" class="flex-1 drop-zone flex flex-col gap-1.5 min-h-[90px] p-1.5 border-2 border-transparent" ondragover="allowDrop(event)" ondrop="drop(event, '${inc.id}')" ondragleave="dragLeave(event)"></div>`;
+                            periodColumn.appendChild(div);
 
                             const dropZone = div.querySelector('.drop-zone');
                             inc.tabs.forEach(tId => { if (fData.tabs[tId]) dropZone.appendChild(createTabElement(fData.tabs[tId])); });
+
+                            const loansForSourcePeriod = loanAssignments.filter(item => item.sourceIncomeId === inc.id);
+                            if (loansForSourcePeriod.length) periodColumn.appendChild(createLoanGroupBox(loansForSourcePeriod));
+                            incContainer.appendChild(periodColumn);
                         });
+
+                        const loansWithoutSourcePeriod = loanAssignments.filter(item => !item.sourceIncomeId);
+                        if (loansWithoutSourcePeriod.length) incContainer.appendChild(createLoanGroupBox(loansWithoutSourcePeriod));
 
                         const unassignedZone = document.getElementById('zone-unassigned');
                         unassignedZone.innerHTML = '';

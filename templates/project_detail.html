@@ -20,29 +20,44 @@
             </div>
             <div class="flex items-center gap-3">
                 <span id="project-save-status" class="text-[11px] text-gray-500" aria-live="polite"></span>
-                <button id="delete-project" type="button" class="rounded border border-red-900/60 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-950/50">Delete Project</button>
+                <button id="delete-project" type="button" disabled class="rounded border border-red-900/60 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40">Delete Project</button>
             </div>
         </header>
 
-        <section id="project-content" class="hidden flex-1 min-h-0 overflow-y-auto p-4 md:p-7">
+        <section id="project-content" aria-busy="true" class="flex-1 min-h-0 overflow-y-auto p-4 md:p-7">
             <div class="mx-auto flex min-h-full max-w-5xl flex-col">
+                <div id="project-load-error" class="hidden mb-4 rounded-lg border border-red-900/70 bg-red-950/30 p-4 text-sm text-red-200" role="alert"></div>
+                <p id="project-loading-message" class="mb-3 text-xs text-gray-400" aria-live="polite">Loading project notes…</p>
                 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div>
                         <h2 class="text-sm font-black uppercase tracking-widest text-blue-300">Brainstorming Notes</h2>
                         <p class="mt-1 text-xs text-gray-500">Capture ideas, questions, plans, and anything else for this project. Your notes save automatically.</p>
                     </div>
                 </div>
-                <textarea id="project-ideas" rows="18" placeholder="Start brainstorming…"
+                <textarea id="project-ideas" rows="18" disabled placeholder="Start brainstorming…"
                           class="min-h-[60vh] w-full flex-1 resize-y rounded-xl border border-[#34343d] bg-[#141417] p-5 text-sm leading-7 text-gray-100 placeholder:text-gray-600 shadow-lg focus:outline-none focus:border-blue-500"></textarea>
+                <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <form id="progress-form" class="rounded-xl border border-emerald-900/70 bg-[#141417] p-4">
+                        <label for="progress-input" class="block text-xs font-black uppercase tracking-wider text-emerald-300">Record Progress</label>
+                        <p class="mb-3 mt-1 text-[11px] text-gray-500">Add a completed step. It will appear in the green list on the Projects page.</p>
+                        <div class="flex gap-2">
+                            <input id="progress-input" type="text" maxlength="1000" required disabled placeholder="What did you complete?" class="min-w-0 flex-1 rounded border border-[#34343d] bg-[#101013] px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-emerald-600 disabled:opacity-50">
+                            <button type="submit" disabled class="rounded bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-600 disabled:opacity-50">Add</button>
+                        </div>
+                    </form>
+                    <form id="todo-form" class="rounded-xl border border-yellow-900/70 bg-[#141417] p-4">
+                        <label for="todo-input" class="block text-xs font-black uppercase tracking-wider text-yellow-300">Add To Do</label>
+                        <p class="mb-3 mt-1 text-[11px] text-gray-500">It will appear with a checkbox on the Projects page.</p>
+                        <div class="flex flex-wrap gap-2">
+                            <input id="todo-input" type="text" maxlength="1000" required disabled placeholder="What needs to be done?" class="min-w-0 flex-1 rounded border border-[#34343d] bg-[#101013] px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-600 disabled:opacity-50">
+                            <input id="todo-date" type="date" disabled aria-label="Optional to-do date" class="rounded border border-yellow-900/50 bg-[#101013] px-2 py-2 text-xs text-yellow-100 disabled:opacity-50">
+                            <button type="submit" disabled class="rounded bg-yellow-700 px-3 py-2 text-xs font-bold text-white hover:bg-yellow-600 disabled:opacity-50">Add</button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </section>
 
-        <div id="project-load-error" class="hidden flex-1 items-center justify-center p-8 text-center">
-            <div>
-                <h2 class="font-bold text-red-300">Couldn’t load this project</h2>
-                <p class="mt-2 text-sm text-gray-400">Go back to Projects and open it again. Your other projects are unchanged.</p>
-            </div>
-        </div>
     </main>
 
     <script>
@@ -102,6 +117,37 @@
             ideaTimer = setTimeout(queueSave, 500);
         });
 
+        document.getElementById('progress-form').addEventListener('submit', async event => {
+            event.preventDefault();
+            if (!project) return;
+            const input = document.getElementById('progress-input');
+            const text = input.value.trim();
+            if (!text) return;
+            if (!Array.isArray(project.progress)) project.progress = [];
+            project.progress.push({ id: 'progress_' + Math.random().toString(36).slice(2, 12), text, created: new Date().toISOString() });
+            input.value = '';
+            await queueSave();
+        });
+
+        document.getElementById('todo-form').addEventListener('submit', async event => {
+            event.preventDefault();
+            if (!project) return;
+            const input = document.getElementById('todo-input');
+            const text = input.value.trim();
+            if (!text) return;
+            if (!Array.isArray(project.todos)) project.todos = [];
+            project.todos.push({
+                id: 'todo_' + Math.random().toString(36).slice(2, 12),
+                text,
+                date: document.getElementById('todo-date').value,
+                done: false,
+                created: new Date().toISOString()
+            });
+            input.value = '';
+            document.getElementById('todo-date').value = '';
+            await queueSave();
+        });
+
         document.getElementById('delete-project').addEventListener('click', async () => {
             if (!project || !confirm(`Delete “${project.name}” and all of its progress and to-dos?`)) return;
             allProjects = allProjects.filter(item => item.id !== projectId);
@@ -118,13 +164,17 @@
                 if (!project) throw new Error('project missing');
                 document.getElementById('project-ideas').value = project.ideas || '';
                 renderProjectHeader();
-                document.getElementById('project-content').classList.remove('hidden');
+                document.getElementById('project-content').setAttribute('aria-busy', 'false');
+                document.getElementById('project-loading-message').remove();
+                document.querySelectorAll('#project-content input, #project-content textarea, #project-content button, #delete-project').forEach(control => { control.disabled = false; });
                 loaded = true;
                 setSaveStatus('Synced ✓');
             } catch (error) {
-                document.getElementById('project-content').classList.add('hidden');
                 const errorPanel = document.getElementById('project-load-error');
-                errorPanel.classList.remove('hidden'); errorPanel.classList.add('flex');
+                errorPanel.textContent = 'Could not load this project’s saved data. Use “Projects” to go back, or refresh the page and try again.';
+                errorPanel.classList.remove('hidden');
+                document.getElementById('project-loading-message').textContent = 'Project data did not load.';
+                document.getElementById('project-content').setAttribute('aria-busy', 'false');
                 document.getElementById('project-save-status').textContent = 'Not loaded';
             }
         })();

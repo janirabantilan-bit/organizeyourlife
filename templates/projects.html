@@ -6,10 +6,17 @@
     <title>Projects – My Scheduler</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .projects-scroll { scrollbar-width: thin; scrollbar-color: #555560 #17171b; }
+        html, body { width: 100%; height: 100%; min-height: 0; }
+        body { height: 100vh; height: 100dvh; }
+        body > main { height: 100%; min-height: 0; }
+        #projects-scroll { height: 0; flex: 1 1 auto; overflow-y: scroll !important; scrollbar-gutter: stable; }
+        @media (max-width: 767px) {
+            body > main { height: calc(100vh - 49px); height: calc(100dvh - 49px); flex: 1 1 auto; }
+        }
+        .projects-scroll { scrollbar-width: auto; scrollbar-color: #777780 #17171b; }
         .projects-scroll::-webkit-scrollbar { width: 10px; }
         .projects-scroll::-webkit-scrollbar-track { background: #17171b; }
-        .projects-scroll::-webkit-scrollbar-thumb { background: #555560; border: 2px solid #17171b; border-radius: 8px; }
+        .projects-scroll::-webkit-scrollbar-thumb { background: #777780; border: 2px solid #17171b; border-radius: 8px; }
     </style>
 </head>
 <body class="bg-[#0f0f11] text-gray-200 font-sans h-dvh min-h-0 flex flex-col md:flex-row overflow-hidden">
@@ -137,8 +144,17 @@
                             check.type = 'checkbox'; check.checked = !!item.done;
                             check.className = 'mt-0.5 h-4 w-4 shrink-0 accent-yellow-500';
                             check.setAttribute('aria-label', `Mark ${item.text || 'to-do'} complete`);
-                            check.addEventListener('change', async () => { item.done = check.checked; await saveProjects(); renderProjects(); });
-                            line.appendChild(check);
+                            check.setAttribute('title', 'Done — remove this to-do');
+                            check.addEventListener('change', async () => {
+                                if (!check.checked) return;
+                                project.todos = project.todos.filter(entry => entry.id !== item.id);
+                                await saveProjects();
+                                renderProjects();
+                            });
+                            const doneLabel = document.createElement('label');
+                            doneLabel.className = 'flex shrink-0 cursor-pointer items-center gap-1 text-[9px] font-bold uppercase text-yellow-200';
+                            doneLabel.append(check, document.createTextNode('Done'));
+                            line.appendChild(doneLabel);
                         }
                         const text = document.createElement('span');
                         text.className = `min-w-0 flex-1 ${item.done ? 'line-through opacity-60' : ''}`;

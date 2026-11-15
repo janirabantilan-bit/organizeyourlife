@@ -11,14 +11,16 @@
         .thick-border { border: 2px solid #6b7280; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .positive-note-card { touch-action: none; }
         @media (max-width: 767px) {
             body { height: 100dvh; min-height: 0; }
             body > main { height: calc(100dvh - 49px); }
-            #finance-view-board > div:first-child { flex-direction: column; overflow-y: auto; }
+            #finance-view-board > div:first-child { flex-direction: column; overflow: visible; }
             #finance-view-board > div:first-child > .relative { width: 100%; min-height: 220px; flex: 0 0 auto; }
             #finance-view-board > div:first-child > div:last-child { width: 100%; min-height: 120px; }
-            #finance-view-board > div:last-child { min-height: 105px; padding: .65rem; }
-            #finance-view-board > div:last-child #zone-unassigned { max-height: 120px; overflow-y: auto; }
+            #finance-view-board > div:nth-child(2) { min-height: 105px; padding: .65rem; }
+            #finance-view-board > div:nth-child(2) #zone-unassigned { max-height: 120px; overflow-y: auto; }
+            #positive-notes-canvas { min-height: 420px; }
             #game-level-title { max-width: 55vw; overflow-wrap: anywhere; }
             #game-hours-tracker { font-size: 9px; }
             #tasks-canvas { min-height: 500px; }
@@ -79,8 +81,8 @@
             </div>
 
             <!-- VIEW A: MAIN FINANCE BOARD -->
-            <div id="finance-view-board" class="flex-1 flex flex-col overflow-hidden">
-                <div class="flex-1 p-4 overflow-y-auto flex gap-4 items-start">
+            <div id="finance-view-board" class="flex-1 flex flex-col overflow-y-auto">
+                <div class="flex-none min-h-[420px] p-4 flex gap-4 items-start">
                     <!-- Carousel Wrapper for Incomes -->
                     <div class="relative flex-1 flex items-center overflow-hidden">
                         <button onclick="scrollIncomes(-220)" class="z-20 bg-black/80 hover:bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center border border-gray-500 shadow-lg shrink-0 mr-2 transition">◀</button>
@@ -99,7 +101,7 @@
                 </div>
 
                 <!-- BOTTOM BAR: DEBTS & PAYABLES -->
-                <div class="border-t border-[#26262b] bg-[#141417] p-4 shrink-0 min-h-[120px] flex flex-col gap-2.5">
+                <div class="border-t border-[#26262b] bg-[#141417] p-4 flex-none min-h-[120px] flex flex-col gap-2.5">
                     <div class="flex flex-wrap items-center gap-2">
                         <button onclick="openModal('modal-debt')" class="thick-border bg-[#1c1c21] hover:bg-gray-800 text-gray-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition">
                             <span class="bg-gray-200 text-black rounded-full w-4 h-4 flex items-center justify-center text-sm leading-none">+</span> ADD DEBTS AND PAYABLES
@@ -110,6 +112,16 @@
                     </div>
                     <div id="zone-unassigned" class="flex-1 drop-zone flex flex-wrap gap-2 p-2 border border-[#2a2a32] bg-[#0f0f11] rounded min-h-[50px]" ondragover="allowDrop(event)" ondrop="drop(event, 'unassigned')" ondragleave="dragLeave(event)"></div>
                 </div>
+                <section class="flex-none border-t border-[#26262b] bg-[#111114] p-4">
+                    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-sm font-black uppercase tracking-widest text-emerald-300">Be Positive Notes</h2>
+                            <p class="mt-1 text-[11px] text-gray-500">Add as many notes as you like, then drag them anywhere in this space.</p>
+                        </div>
+                        <button onclick="openPositiveNoteModal()" class="thick-border bg-[#1c1c21] px-3 py-1.5 text-xs font-bold uppercase text-emerald-200 transition hover:bg-emerald-900/60">＋ Add Note</button>
+                    </div>
+                    <div id="positive-notes-canvas" class="relative min-h-[340px] overflow-hidden rounded border border-dashed border-[#3a3a42] bg-[#0d0d10]"></div>
+                </section>
             </div>
 
             <!-- VIEW B: BEER MONEY PAGE -->
@@ -226,7 +238,7 @@
             <!-- Loan Modal -->
             <div id="modal-loan" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
                 <div class="bg-[#141417] border border-amber-700/70 p-5 w-full max-w-sm rounded shadow-2xl">
-                    <h3 class="font-bold text-sm mb-2 uppercase text-amber-300">Add Loan</h3>
+                    <h3 id="loan-modal-title" class="font-bold text-sm mb-2 uppercase text-amber-300">Add Loan</h3>
                     <p class="text-[11px] text-gray-400 mb-4">The amount will be deducted once from the first income period dated after the loan date.</p>
                     <div class="space-y-2.5">
                         <label class="block text-[11px] font-bold text-gray-400 uppercase" for="inp-loan-name">Loan name</label>
@@ -238,7 +250,18 @@
                     </div>
                     <div class="flex justify-end gap-2 mt-4">
                         <button onclick="closeModals()" class="px-2.5 py-1 text-gray-400 hover:text-white text-xs font-medium">Cancel</button>
-                        <button onclick="saveLoan()" class="px-3 py-1 bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs rounded transition">Add Loan</button>
+                        <button id="loan-save-button" onclick="saveLoan()" class="px-3 py-1 bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs rounded transition">Add Loan</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="modal-positive-note" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div class="w-full max-w-md rounded border border-emerald-700/70 bg-[#141417] p-5 shadow-2xl">
+                    <h3 id="positive-note-modal-title" class="mb-3 text-sm font-bold uppercase text-emerald-300">Add a positive note</h3>
+                    <textarea id="inp-positive-note" rows="5" maxlength="5000" placeholder="Write something encouraging..." class="w-full resize-y border border-[#2a2a32] bg-[#1c1c21] p-3 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none"></textarea>
+                    <div class="mt-4 flex justify-end gap-2">
+                        <button onclick="closeModals()" class="px-2.5 py-1 text-xs font-medium text-gray-400 hover:text-white">Cancel</button>
+                        <button onclick="savePositiveNote()" class="rounded bg-emerald-700 px-3 py-1 text-xs font-bold text-white transition hover:bg-emerald-600">Save Note</button>
                     </div>
                 </div>
             </div>
@@ -333,13 +356,17 @@
                     unassigned: [],
                     savings: [],
                     loans: [],
+                    positiveNotes: [],
                     quote: "",
                     wallets: DEFAULT_WALLETS,
                     beerMoney: []
                 };
                 let editingIncomeId = null;
+                let editingLoanId = null;
+                let editingPositiveNoteId = null;
                 let financeLoaded = false, financeSaveTimer = null;
                 if (!Array.isArray(fData.loans)) fData.loans = [];
+                if (!Array.isArray(fData.positiveNotes)) fData.positiveNotes = [];
                 if (!fData.beerMoney) fData.beerMoney = [];
                 if (!fData.wallets || !Array.isArray(fData.wallets) || fData.wallets.length === 0) {
                     fData.wallets = JSON.parse(JSON.stringify(DEFAULT_WALLETS));
@@ -365,7 +392,7 @@
                 }
 
                 function financeHasContent(data) {
-                    return !!(data.incomes?.length || Object.keys(data.tabs || {}).length || data.unassigned?.length || data.savings?.length || data.loans?.length || data.quote || data.beerMoney?.length || (data.wallets || []).some(w => Number(w.amount) !== 0));
+                    return !!(data.incomes?.length || Object.keys(data.tabs || {}).length || data.unassigned?.length || data.savings?.length || data.loans?.length || data.positiveNotes?.length || data.quote || data.beerMoney?.length || (data.wallets || []).some(w => Number(w.amount) !== 0));
                 }
                 async function initializeFinanceSync() {
                     const status = document.getElementById('finance-sync-status');
@@ -381,6 +408,7 @@
                         } else {
                             fData = {...fData, ...remote};
                             if (!Array.isArray(fData.loans)) fData.loans = [];
+                            if (!Array.isArray(fData.positiveNotes)) fData.positiveNotes = [];
                             if (!fData.beerMoney) fData.beerMoney = [];
                             if (!fData.wallets || !fData.wallets.length) fData.wallets = JSON.parse(JSON.stringify(DEFAULT_WALLETS));
                             status.textContent = 'Synced ✓';
@@ -541,7 +569,7 @@
                 }
 
                 function closeModals() {
-                    ['modal-income', 'modal-income-edit', 'modal-debt', 'modal-loan', 'modal-quote', 'modal-wallet', 'modal-beer'].forEach(id => {
+                    ['modal-income', 'modal-income-edit', 'modal-debt', 'modal-loan', 'modal-positive-note', 'modal-quote', 'modal-wallet', 'modal-beer'].forEach(id => {
                         const el = document.getElementById(id);
                         if (el) el.classList.add('hidden');
                     });
@@ -549,11 +577,17 @@
                     document.getElementById('inp-inc-amt').value = '';
                     document.getElementById('inp-income-edit-amount').value = '';
                     editingIncomeId = null;
+                    editingLoanId = null;
+                    editingPositiveNoteId = null;
                     document.getElementById('inp-debt-desc').value = '';
                     document.getElementById('inp-debt-amt').value = '';
                     document.getElementById('inp-loan-name').value = '';
                     document.getElementById('inp-loan-date').value = '';
                     document.getElementById('inp-loan-amount').value = '';
+                    document.getElementById('loan-modal-title').textContent = 'Add Loan';
+                    document.getElementById('loan-save-button').textContent = 'Add Loan';
+                    document.getElementById('inp-positive-note').value = '';
+                    document.getElementById('positive-note-modal-title').textContent = 'Add a positive note';
                     document.getElementById('inp-quote-text').value = '';
                     ['inp-beer-custom', 'inp-beer-money', 'inp-beer-coins', 'inp-beer-shopeepay', 'inp-beer-affilt', 'inp-beer-lazadamoney', 'inp-beer-ref', 'inp-beer-points', 'inp-beer-vouchers'].forEach(id => {
                         const el = document.getElementById(id);
@@ -599,9 +633,27 @@
                     const date = document.getElementById('inp-loan-date').value;
                     const amount = parseFloat(document.getElementById('inp-loan-amount').value);
                     if (!name || !date || !Number.isFinite(amount) || amount <= 0) return;
-                    fData.loans.push({ id: 'loan_' + generateId(), name, date, amount });
+                    if (editingLoanId) {
+                        const loan = fData.loans.find(item => item.id === editingLoanId);
+                        if (loan) Object.assign(loan, { name, date, amount });
+                    } else {
+                        fData.loans.push({ id: 'loan_' + generateId(), name, date, amount });
+                    }
                     closeModals();
                     saveState();
+                }
+
+                function editLoan(event, id) {
+                    event.stopPropagation();
+                    const loan = fData.loans.find(item => item.id === id);
+                    if (!loan) return;
+                    editingLoanId = id;
+                    document.getElementById('inp-loan-name').value = loan.name || '';
+                    document.getElementById('inp-loan-date').value = financeDateISO(loan.date) || '';
+                    document.getElementById('inp-loan-amount').value = Number(loan.amount) || '';
+                    document.getElementById('loan-modal-title').textContent = 'Edit Loan';
+                    document.getElementById('loan-save-button').textContent = 'Save Loan';
+                    document.getElementById('modal-loan').classList.remove('hidden');
                 }
 
                 function deleteLoan(event, id) {
@@ -799,7 +851,13 @@
                         remove.title = 'Remove loan';
                         remove.textContent = '✕';
                         remove.onclick = event => deleteLoan(event, loan.id);
-                        row.append(details, amount, remove);
+                        const edit = document.createElement('button');
+                        edit.type = 'button';
+                        edit.className = 'text-amber-300 hover:text-white text-xs shrink-0';
+                        edit.title = 'Edit loan';
+                        edit.textContent = '✎';
+                        edit.onclick = event => editLoan(event, loan.id);
+                        row.append(details, amount, edit, remove);
                         box.appendChild(row);
                     });
                     return box;
@@ -878,6 +936,7 @@
                         document.getElementById('savings-total').innerText = savingsSum;
                         renderQuoteSlot();
                     }
+                    renderPositiveNotes();
 
                     // Render Beer Money Cards
                     const beerGrid = document.getElementById('beer-money-grid');
@@ -942,6 +1001,88 @@
                             });
                         }
                     }
+                }
+
+                function openPositiveNoteModal(id) {
+                    editingPositiveNoteId = id || null;
+                    const note = fData.positiveNotes.find(item => item.id === id);
+                    document.getElementById('inp-positive-note').value = note?.text || '';
+                    document.getElementById('positive-note-modal-title').textContent = note ? 'Edit positive note' : 'Add a positive note';
+                    document.getElementById('modal-positive-note').classList.remove('hidden');
+                    setTimeout(() => document.getElementById('inp-positive-note').focus(), 50);
+                }
+
+                function savePositiveNote() {
+                    const text = document.getElementById('inp-positive-note').value.trim();
+                    if (!text) return;
+                    if (editingPositiveNoteId) {
+                        const note = fData.positiveNotes.find(item => item.id === editingPositiveNoteId);
+                        if (note) note.text = text;
+                    } else {
+                        const canvas = document.getElementById('positive-notes-canvas');
+                        const index = fData.positiveNotes.length;
+                        fData.positiveNotes.push({ id: 'note_' + generateId(), text, x: 16 + (index % 3) * 236, y: 16 + Math.floor(index / 3) * 150 });
+                        canvas.style.minHeight = Math.max(340, Math.ceil((index + 1) / 3) * 150 + 24) + 'px';
+                    }
+                    closeModals();
+                    saveState();
+                }
+
+                function deletePositiveNote(event, id) {
+                    event.stopPropagation();
+                    if (!confirm('Delete this positive note?')) return;
+                    fData.positiveNotes = fData.positiveNotes.filter(note => note.id !== id);
+                    saveState();
+                }
+
+                function renderPositiveNotes() {
+                    const canvas = document.getElementById('positive-notes-canvas');
+                    if (!canvas) return;
+                    canvas.replaceChildren();
+                    const requiredHeight = fData.positiveNotes.reduce((height, note) => Math.max(height, (Number(note.y) || 0) + 150), 340);
+                    canvas.style.minHeight = requiredHeight + 'px';
+                    fData.positiveNotes.forEach(note => {
+                        const card = document.createElement('article');
+                        card.className = 'positive-note-card absolute w-[220px] max-w-[calc(100%-16px)] min-h-[132px] overflow-hidden rounded border border-emerald-800/70 bg-emerald-950/40 shadow-lg';
+                        card.style.left = Math.max(0, Number(note.x) || 0) + 'px';
+                        card.style.top = Math.max(0, Number(note.y) || 0) + 'px';
+                        const handle = document.createElement('div');
+                        handle.className = 'flex cursor-grab items-center justify-between border-b border-emerald-900/70 bg-emerald-950/70 px-2 py-1.5 active:cursor-grabbing';
+                        handle.innerHTML = '<span class="text-[9px] font-black uppercase tracking-widest text-emerald-300">✥ Drag note</span>';
+                        const actions = document.createElement('div');
+                        actions.className = 'flex gap-1';
+                        const edit = document.createElement('button');
+                        edit.type = 'button'; edit.className = 'px-1 text-xs text-emerald-200 hover:text-white'; edit.textContent = '✎'; edit.title = 'Edit note';
+                        edit.onclick = event => { event.stopPropagation(); openPositiveNoteModal(note.id); };
+                        const remove = document.createElement('button');
+                        remove.type = 'button'; remove.className = 'px-1 text-xs text-gray-400 hover:text-red-300'; remove.textContent = '✕'; remove.title = 'Delete note';
+                        remove.onclick = event => deletePositiveNote(event, note.id);
+                        actions.append(edit, remove); handle.appendChild(actions);
+                        const body = document.createElement('p');
+                        body.className = 'whitespace-pre-wrap break-words p-3 text-sm leading-relaxed text-gray-100';
+                        body.textContent = note.text || '';
+                        card.append(handle, body);
+                        handle.addEventListener('pointerdown', event => {
+                            if (event.target.closest('button')) return;
+                            event.preventDefault();
+                            handle.setPointerCapture(event.pointerId);
+                            const startX = event.clientX, startY = event.clientY;
+                            const originX = Number(note.x) || 0, originY = Number(note.y) || 0;
+                            const move = moveEvent => {
+                                const maxX = Math.max(0, canvas.clientWidth - card.offsetWidth);
+                                const maxY = Math.max(0, canvas.clientHeight - card.offsetHeight);
+                                note.x = Math.min(maxX, Math.max(0, originX + moveEvent.clientX - startX));
+                                note.y = Math.min(maxY, Math.max(0, originY + moveEvent.clientY - startY));
+                                card.style.left = note.x + 'px'; card.style.top = note.y + 'px';
+                            };
+                            const finish = () => { handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', finish); handle.removeEventListener('pointercancel', finish); saveState(); };
+                            handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', finish); handle.addEventListener('pointercancel', finish);
+                        });
+                        canvas.appendChild(card);
+                        const maxX = Math.max(0, canvas.clientWidth - card.offsetWidth);
+                        note.x = Math.min(maxX, Math.max(0, Number(note.x) || 0));
+                        card.style.left = note.x + 'px';
+                    });
                 }
 
                 function allowDrop(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drag-over'); }

@@ -314,7 +314,7 @@ def api_finance():
     data = json.loads(fin.data_json)
     data['_is_empty'] = is_new or not any([
         data.get('incomes'), data.get('tabs'), data.get('unassigned'), data.get('savings'),
-        data.get('loans'), data.get('quote'), data.get('beerMoney'),
+        data.get('loans'), data.get('positiveNotes'), data.get('quote'), data.get('beerMoney'),
         any((wallet.get('amount', 0) or 0) for wallet in data.get('wallets', []) if isinstance(wallet, dict))
     ])
     return jsonify(data)
@@ -388,7 +388,7 @@ def api_tasks():
     db.session.commit()
     return jsonify(ok=True)
 
-def clean_project_entries(entries, include_done=False):
+def clean_project_entries(entries, include_done=False, include_date=False):
     if not isinstance(entries, list):
         return []
     cleaned, seen = [], set()
@@ -407,6 +407,14 @@ def clean_project_entries(entries, include_done=False):
         }
         if include_done:
             item["done"] = bool(entry.get("done"))
+        if include_date:
+            entry_date = str(entry.get("date", ""))[:10]
+            if entry_date:
+                try:
+                    datetime.strptime(entry_date, "%Y-%m-%d")
+                except ValueError:
+                    entry_date = ""
+            item["date"] = entry_date
         cleaned.append(item)
     return cleaned
 
@@ -433,7 +441,7 @@ def clean_projects(payload):
             "priority": bool(project.get("priority")),
             "ideas": str(project.get("ideas", ""))[:100000],
             "progress": clean_project_entries(project.get("progress", [])),
-            "todos": clean_project_entries(project.get("todos", []), include_done=True),
+            "todos": clean_project_entries(project.get("todos", []), include_done=True, include_date=True),
             "created": str(project.get("created", ""))[:40],
         })
     return {"projects": cleaned}
@@ -934,7 +942,7 @@ def restore_finance_is_empty(data):
         return True
     return not any([
         data.get("incomes"), data.get("tabs"), data.get("unassigned"),
-        data.get("savings"), data.get("loans"), data.get("quote"), data.get("beerMoney"),
+        data.get("savings"), data.get("loans"), data.get("positiveNotes"), data.get("quote"), data.get("beerMoney"),
         any((wallet.get("amount", 0) or 0) for wallet in data.get("wallets", []) if isinstance(wallet, dict)),
     ])
 

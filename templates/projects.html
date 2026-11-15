@@ -13,7 +13,7 @@
         <header class="shrink-0 border-b border-[#26262b] bg-[#141417] px-4 md:px-8 py-4 flex flex-wrap items-center justify-between gap-3">
             <div>
                 <h1 class="text-xl md:text-2xl font-black uppercase tracking-wide text-gray-100">📁 Projects</h1>
-                <p class="text-xs text-gray-400 mt-1">Keep ideas, completed progress, and next steps together.</p>
+                <p class="text-xs text-gray-400 mt-1">Track progress and dated to-dos here. Open a project name to brainstorm.</p>
             </div>
             <span id="projects-sync-status" class="text-xs text-gray-500" aria-live="polite">Loading projects…</span>
         </header>
@@ -54,6 +54,7 @@
         const projectsGrid = document.getElementById('projects-grid');
         const projectsStatus = document.getElementById('projects-sync-status');
         const createModal = document.getElementById('project-create-modal');
+        let projectSaveQueue = Promise.resolve();
 
         function newId(prefix) {
             return prefix + '_' + Math.random().toString(36).slice(2, 12);
@@ -69,10 +70,8 @@
         }
 
         function makeProjectCard(project, rank) {
-            const card = document.createElement('button');
-            card.type = 'button';
-            card.className = 'group relative min-h-[176px] w-full rounded-xl border-2 border-[#44444f] bg-[#141417] p-5 md:p-6 text-left shadow-lg transition hover:-translate-y-0.5 hover:border-blue-500 hover:bg-[#19191e] focus:outline-none focus:ring-2 focus:ring-blue-500';
-            card.addEventListener('click', () => { window.location.href = '/projects/' + encodeURIComponent(project.id); });
+            const card = document.createElement('article');
+            card.className = 'relative min-h-[260px] w-full rounded-xl border-2 border-[#44444f] bg-[#141417] p-4 md:p-5 text-left shadow-lg';
 
             const top = document.createElement('div');
             top.className = 'flex items-start justify-between gap-3';
@@ -97,15 +96,102 @@
             }
             top.appendChild(badges);
 
-            const name = document.createElement('h2');
-            name.className = 'mt-5 break-words text-lg md:text-xl font-black leading-snug text-gray-100 group-hover:text-blue-200';
+            const name = document.createElement('a');
+            name.href = '/projects/' + encodeURIComponent(project.id);
+            name.className = 'mt-3 block break-words text-lg md:text-xl font-black leading-snug text-gray-100 hover:text-blue-200';
             name.textContent = project.name;
+            name.title = 'Open brainstorming notes for ' + project.name;
             card.append(top, name);
 
-            const footer = document.createElement('div');
-            footer.className = 'mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500';
-            footer.textContent = `${(project.progress || []).length} progress updates · ${(project.todos || []).filter(item => !item.done).length} to do`;
-            card.appendChild(footer);
+            const previews = document.createElement('div');
+            previews.className = 'mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2';
+            const progressItems = Array.isArray(project.progress) ? project.progress : [];
+            const todoItems = Array.isArray(project.todos) ? project.todos : [];
+
+            function addSection(label, items, colorClass, kind) {
+                const column = document.createElement('section');
+                column.className = `min-w-0 rounded border p-2 ${colorClass}`;
+                const heading = document.createElement('div');
+                heading.className = 'mb-2 text-[10px] font-black uppercase tracking-wider opacity-90';
+                heading.textContent = label;
+                column.appendChild(heading);
+                const list = document.createElement('div');
+                list.className = 'space-y-1.5';
+                if (!items.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'text-[10px] opacity-60';
+                    empty.textContent = 'Nothing added yet';
+                    list.appendChild(empty);
+                } else {
+                    items.forEach(item => {
+                        const line = document.createElement('div');
+                        line.className = `flex min-w-0 items-center gap-1.5 rounded px-1.5 py-1 text-[10px] leading-snug ${kind === 'todo' ? 'bg-yellow-950/30' : 'bg-emerald-950/30'}`;
+                        if (kind === 'todo') {
+                            const check = document.createElement('input');
+                            check.type = 'checkbox'; check.checked = !!item.done;
+                            check.className = 'h-3.5 w-3.5 shrink-0 accent-yellow-500';
+                            check.setAttribute('aria-label', `Mark ${item.text || 'to-do'} complete`);
+                            check.addEventListener('change', async () => { item.done = check.checked; await saveProjects(); renderProjects(); });
+                            line.appendChild(check);
+                        }
+                        const text = document.createElement('span');
+                        text.className = `min-w-0 flex-1 break-words ${item.done ? 'line-through opacity-60' : ''}`;
+                        text.textContent = item.text || 'Untitled';
+                        line.appendChild(text);
+                        if (kind === 'todo') {
+                            const date = document.createElement('input');
+                            date.type = 'date'; date.value = item.date || '';
+                            date.className = 'w-[108px] shrink-0 rounded border border-yellow-900/50 bg-[#171719] px-1 py-0.5 text-[9px] text-yellow-100';
+                            date.setAttribute('aria-label', `Due date for ${item.text || 'to-do'}`);
+                            date.addEventListener('change', async () => { item.date = date.value; await saveProjects(); });
+                            line.appendChild(date);
+                        }
+                        const remove = document.createElement('button');
+                        remove.type = 'button'; remove.className = 'shrink-0 px-1 opacity-60 hover:opacity-100'; remove.textContent = '×'; remove.title = `Remove ${kind === 'todo' ? 'to-do' : 'progress item'}`;
+                        remove.addEventListener('click', async () => {
+                            if (kind === 'todo') project.todos = project.todos.filter(entry => entry.id !== item.id);
+                            else project.progress = project.progress.filter(entry => entry.id !== item.id);
+                            await saveProjects(); renderProjects();
+                        });
+                        line.appendChild(remove);
+                        list.appendChild(line);
+                    });
+                }
+                column.appendChild(list);
+                const form = document.createElement('form');
+                form.className = 'mt-2 flex flex-wrap gap-1.5';
+                const input = document.createElement('input');
+                input.type = 'text'; input.maxLength = 1000; input.required = true;
+                input.placeholder = kind === 'todo' ? 'Add a to-do…' : 'Add progress…';
+                input.className = 'min-w-0 flex-1 rounded border border-[#34343d] bg-[#101013] px-2 py-1.5 text-[10px] text-gray-100 focus:outline-none focus:border-current';
+                form.appendChild(input);
+                if (kind === 'todo') {
+                    const date = document.createElement('input');
+                    date.type = 'date'; date.className = 'w-[115px] rounded border border-yellow-900/50 bg-[#101013] px-1 py-1 text-[9px] text-yellow-100';
+                    date.setAttribute('aria-label', 'To-do date (optional)');
+                    form.appendChild(date);
+                    form.addEventListener('submit', async event => {
+                        event.preventDefault(); const text = input.value.trim(); if (!text) return;
+                        project.todos.push({ id: newId('todo'), text, date: date.value, done: false, created: new Date().toISOString() });
+                        await saveProjects(); renderProjects();
+                    });
+                } else {
+                    form.addEventListener('submit', async event => {
+                        event.preventDefault(); const text = input.value.trim(); if (!text) return;
+                        project.progress.push({ id: newId('progress'), text, created: new Date().toISOString() });
+                        await saveProjects(); renderProjects();
+                    });
+                }
+                const add = document.createElement('button');
+                add.type = 'submit'; add.className = 'rounded bg-black/30 px-2 py-1 text-[10px] font-bold'; add.textContent = '+';
+                form.appendChild(add);
+                column.appendChild(form);
+                previews.appendChild(column);
+            }
+
+            addSection('Progress', progressItems, 'border-emerald-900/70 bg-emerald-950/30 text-emerald-200', 'progress');
+            addSection('To Do', todoItems, 'border-yellow-900/70 bg-yellow-950/25 text-yellow-200', 'todo');
+            card.appendChild(previews);
             return card;
         }
 
@@ -116,7 +202,7 @@
 
             const addCard = document.createElement('button');
             addCard.type = 'button';
-            addCard.className = 'min-h-[176px] w-full rounded-xl border-2 border-dashed border-[#44444f] bg-[#121214] p-5 md:p-6 text-center text-gray-400 transition hover:border-blue-500 hover:bg-blue-950/20 hover:text-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500';
+            addCard.className = 'min-h-[260px] w-full rounded-xl border-2 border-dashed border-[#44444f] bg-[#121214] p-5 md:p-6 text-center text-gray-400 transition hover:border-blue-500 hover:bg-blue-950/20 hover:text-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500';
             addCard.setAttribute('aria-label', 'Add a project');
             addCard.innerHTML = '<span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#202027] text-3xl font-light">+</span><span class="mt-3 block text-sm font-bold uppercase tracking-wider">Add Project</span><span class="mt-1 block text-xs text-gray-500">Click anywhere in this box</span>';
             addCard.addEventListener('click', openProjectForm);
@@ -130,21 +216,25 @@
             setTimeout(() => document.getElementById('project-name').focus(), 50);
         }
 
-        async function saveProjects() {
+        function saveProjects() {
+            const body = JSON.stringify({ projects: projectData });
             projectsStatus.textContent = 'Saving…';
-            try {
-                const response = await fetch('/api/projects', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ projects: projectData })
-                });
-                if (!response.ok) throw new Error('save failed');
-                projectsStatus.textContent = 'Synced ✓';
-                return true;
-            } catch (error) {
-                projectsStatus.textContent = 'Sync failed';
-                return false;
-            }
+            projectSaveQueue = projectSaveQueue.catch(() => {}).then(async () => {
+                try {
+                    const response = await fetch('/api/projects', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body
+                    });
+                    if (!response.ok) throw new Error('save failed');
+                    projectsStatus.textContent = 'Synced ✓';
+                    return true;
+                } catch (error) {
+                    projectsStatus.textContent = 'Sync failed';
+                    return false;
+                }
+            });
+            return projectSaveQueue;
         }
 
         document.getElementById('project-create-form').addEventListener('submit', async event => {

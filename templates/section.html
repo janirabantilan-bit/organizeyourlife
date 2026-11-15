@@ -148,6 +148,20 @@
                 </div>
             </div>
 
+            <!-- Edit Income Amount Modal -->
+            <div id="modal-income-edit" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div class="bg-[#141417] border border-emerald-700/70 p-5 w-full max-w-xs rounded shadow-2xl">
+                    <h3 class="font-bold text-sm mb-2 uppercase text-emerald-300">Edit Income Amount</h3>
+                    <p class="text-[11px] text-gray-400 mb-3">Deductions will be recalculated from this updated amount.</p>
+                    <label for="inp-income-edit-amount" class="block text-[11px] font-bold uppercase text-gray-300">Income before deductions</label>
+                    <input type="number" min="0" step="0.01" id="inp-income-edit-amount" class="mt-1 w-full bg-[#1c1c21] border border-[#2a2a32] p-2 text-sm text-gray-100 focus:outline-none focus:border-emerald-500">
+                    <div class="flex justify-end gap-2 mt-4">
+                        <button onclick="closeModals()" class="px-2.5 py-1 text-gray-400 hover:text-white text-xs font-medium">Cancel</button>
+                        <button onclick="saveEditedIncomeAmount()" class="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded transition">Save Amount</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- RESTORED: MONEY ON WALLET MODAL (GCash, PayMaya, Cash, Bank, etc.) -->
             <div id="modal-wallet" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
                 <div class="bg-[#141417] thick-border p-6 w-full max-w-md rounded shadow-2xl max-h-[90vh] flex flex-col">
@@ -323,6 +337,7 @@
                     wallets: DEFAULT_WALLETS,
                     beerMoney: []
                 };
+                let editingIncomeId = null;
                 let financeLoaded = false, financeSaveTimer = null;
                 if (!Array.isArray(fData.loans)) fData.loans = [];
                 if (!fData.beerMoney) fData.beerMoney = [];
@@ -526,12 +541,14 @@
                 }
 
                 function closeModals() {
-                    ['modal-income', 'modal-debt', 'modal-loan', 'modal-quote', 'modal-wallet', 'modal-beer'].forEach(id => {
+                    ['modal-income', 'modal-income-edit', 'modal-debt', 'modal-loan', 'modal-quote', 'modal-wallet', 'modal-beer'].forEach(id => {
                         const el = document.getElementById(id);
                         if (el) el.classList.add('hidden');
                     });
                     document.getElementById('inp-inc-date').value = '';
                     document.getElementById('inp-inc-amt').value = '';
+                    document.getElementById('inp-income-edit-amount').value = '';
+                    editingIncomeId = null;
                     document.getElementById('inp-debt-desc').value = '';
                     document.getElementById('inp-debt-amt').value = '';
                     document.getElementById('inp-loan-name').value = '';
@@ -551,6 +568,28 @@
                     const dateObj = new Date(dateRaw + 'T00:00:00');
                     const displayDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     fData.incomes.push({ id: 'inc_' + generateId(), date: displayDate, dateISO: dateRaw, amount: amt, tabs: [] });
+                    closeModals();
+                    saveState();
+                }
+
+                function editIncomeAmount(id) {
+                    const income = fData.incomes.find(item => item.id === id);
+                    if (!income) return;
+                    editingIncomeId = id;
+                    document.getElementById('inp-income-edit-amount').value = Number(income.amount) || 0;
+                    document.getElementById('modal-income-edit').classList.remove('hidden');
+                    setTimeout(() => document.getElementById('inp-income-edit-amount').focus(), 50);
+                }
+
+                function saveEditedIncomeAmount() {
+                    const income = fData.incomes.find(item => item.id === editingIncomeId);
+                    const input = document.getElementById('inp-income-edit-amount');
+                    const amount = parseFloat(input.value);
+                    if (!income || !Number.isFinite(amount) || amount < 0) {
+                        alert('Enter a valid income amount of zero or more.');
+                        return;
+                    }
+                    income.amount = amount;
                     closeModals();
                     saveState();
                 }
@@ -815,7 +854,7 @@
                             periodColumn.className = 'w-48 shrink-0 flex flex-col gap-2';
                             const div = document.createElement('div');
                             div.className = "relative w-full thick-border bg-[#141417] p-3 flex flex-col shadow-lg min-h-[220px] group";
-                            div.innerHTML = `<button onclick="deleteIncome('${inc.id}')" class="absolute top-1.5 right-1.5 text-gray-500 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition">✕</button><div class="text-center mb-3 border-b border-[#26262b] pb-2"><div class="font-black text-xl text-gray-100">${remaining.toLocaleString()}</div><div class="text-[11px] font-bold tracking-wider text-gray-400 mt-0.5">${inc.date}</div>${loanDeduction > 0 ? `<div class="text-[10px] font-semibold text-amber-300 mt-1">Includes ₱${loanDeduction.toLocaleString()} loan deduction</div>` : ''}</div><div id="${inc.id}" class="flex-1 drop-zone flex flex-col gap-1.5 min-h-[90px] p-1.5 border-2 border-transparent" ondragover="allowDrop(event)" ondrop="drop(event, '${inc.id}')" ondragleave="dragLeave(event)"></div>`;
+                            div.innerHTML = `<div class="absolute top-1 right-1 flex items-center gap-1"><button onclick="editIncomeAmount('${inc.id}')" class="rounded px-1.5 py-1 text-blue-300 hover:bg-blue-950/50 text-xs" title="Edit income amount" aria-label="Edit income amount">✎</button><button onclick="deleteIncome('${inc.id}')" class="rounded px-1.5 py-1 text-gray-500 hover:bg-red-950/50 hover:text-red-400 text-xs" title="Delete income" aria-label="Delete income">✕</button></div><div class="text-center mb-3 border-b border-[#26262b] pb-2 pt-3"><div class="inline-flex max-w-full items-center rounded-full border border-emerald-700/70 bg-emerald-950/60 px-2.5 py-1 text-[10px] font-bold text-emerald-300">BEFORE DEDUCTIONS · ₱${(Number(inc.amount) || 0).toLocaleString()}</div><div class="font-black text-xl text-gray-100 mt-2">${remaining.toLocaleString()}</div><div class="text-[11px] font-bold tracking-wider text-gray-400 mt-0.5">${inc.date}</div>${loanDeduction > 0 ? `<div class="text-[10px] font-semibold text-amber-300 mt-1">Includes ₱${loanDeduction.toLocaleString()} loan deduction</div>` : ''}</div><div id="${inc.id}" class="flex-1 drop-zone flex flex-col gap-1.5 min-h-[90px] p-1.5 border-2 border-transparent" ondragover="allowDrop(event)" ondrop="drop(event, '${inc.id}')" ondragleave="dragLeave(event)"></div>`;
                             periodColumn.appendChild(div);
 
                             const dropZone = div.querySelector('.drop-zone');

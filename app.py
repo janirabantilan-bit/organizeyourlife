@@ -64,7 +64,7 @@ class FinanceData(db.Model):
     data_json = db.Column(db.Text, default='{"incomes":[],"tabs":{},"unassigned":[],"savings":[],"quote":""}')
 
 class UserStore(db.Model):
-    """Small per-user storage (used by the Goals page)."""
+    """Per-user JSON storage for goals, tasks, projects, and related data."""
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     key = db.Column(db.String(40), nullable=False)
@@ -321,6 +321,16 @@ def api_finance():
 
 SECTIONS = {"tasks": "Tasks", "goals": "Goals", "finance": "Finance", "dreams": "Dreams"}
 
+@app.route("/projects")
+@login_required
+def projects_page():
+    return render_template("projects.html", active_page="projects")
+
+@app.route("/projects/<project_id>")
+@login_required
+def project_detail_page(project_id):
+    return render_template("project_detail.html", active_page="projects", project_id=project_id)
+
 @app.route("/<any(tasks, goals, finance, dreams):name>")
 @login_required
 def section(name):
@@ -377,6 +387,82 @@ def api_tasks():
         db.session.add(UserStore(user_id=current_user.id, key="tasks", data_json=data_json))
     db.session.commit()
     return jsonify(ok=True)
+
+def clean_project_entries(entries, include_done=False):
+    if not isinstance(entries, list):
+        return []
+    cleaned, seen = [], set()
+    for entry in entries[:1000]:
+        if not isinstance(entry, dict):
+            continue
+        entry_id = str(entry.get("id", ""))[:40]
+        text = str(entry.get("text", "")).strip()[:1000]
+        if not entry_id or entry_id in seen or not text:
+            continue
+        seen.add(entry_id)
+        item = {
+            "id": entry_id,
+            "text": text,
+            "created": str(entry.get("created", ""))[:40],
+        }
+        if include_done:
+            item["done"] = bool(entry.get("done"))
+        cleaned.append(item)
+    return cleaned
+
+def clean_projects(payload):
+    cleaned, seen = [], set()
+    for project in (payload.get("projects") or [])[:500]:
+        if not isinstance(project, dict):
+            continue
+        project_id = str(project.get("id", ""))[:40]
+        name = str(project.get("name", "")).strip()[:120]
+        deadline = str(project.get("deadline", ""))[:10]
+        if deadline:
+            try:
+                datetime.strptime(deadline, "%Y-%m-%d")
+            except ValueError:
+                deadline = ""
+        if not project_id or project_id in seen or not name:
+            continue
+        seen.add(project_id)
+        cleaned.append({
+            "id": project_id,
+            "name": name,
+            "deadline": deadline,
+            "priority": bool(project.get("priority")),
+            "ideas": str(project.get("ideas", ""))[:100000],
+            "progress": clean_project_entries(project.get("progress", [])),
+            "todos": clean_project_entries(project.get("todos", []), include_done=True),
+            "created": str(project.get("created", ""))[:40],
+        })
+    return {"projects": cleaned}
+
+@app.route("/api/projects", methods=["GET", "POST"])
+@login_required
+def api_projects():
+    row = UserStore.query.filter_by(user_id=current_user.id, key="projects").first()
+    if request.method == "GET":
+        if row:
+            try:
+                data = json.loads(row.data_json)
+                if isinstance(data, dict):
+                    return jsonify(clean_projects(data))
+            except json.JSONDecodeError:
+                pass
+        return jsonify(projects=[], is_new=True)
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or not isinstance(payload.get("projects"), list):
+        return jsonify(ok=False, error="bad input"), 400
+    cleaned = clean_projects(payload)
+    data_json = json.dumps(cleaned)
+    if row:
+        row.data_json = data_json
+    else:
+        db.session.add(UserStore(user_id=current_user.id, key="projects", data_json=data_json))
+    db.session.commit()
+    return jsonify(ok=True, projects=len(cleaned["projects"]))
 
 # ---------------------------------------------------------------------------
 # GOALS (saved per user)
@@ -874,6 +960,8 @@ def restore_account_is_empty(user_id):
         if row.key == "goals" and data.get("goals"):
             return False
         if row.key == "dreams" and data.get("dreams"):
+            return False
+        if row.key == "projects" and data.get("projects"):
             return False
         if row.key == "challenge" and (data.get("logs") or data.get("paused")):
             return False
